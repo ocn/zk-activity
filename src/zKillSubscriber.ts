@@ -144,14 +144,14 @@ export class ZKillSubscriber {
     }
 
     protected async onMessage(event: MessageEvent) {
-        const data = JSON.parse(event.data.toString());
+        const killmail_data = JSON.parse(event.data.toString());
         this.subscriptions.forEach((guild, guildId) => {
-            const log_prefix = `["${data.killmail_id}"][${new Date()}] `;
+            const log_prefix = `["${killmail_data.killmail_id}"][${new Date()}] `;
             console.log(log_prefix);
             guild.channels.forEach((channel, channelId) => {
                 channel.subscriptions.forEach(async (subscription) => {
                     try {
-                        await this.process_subscription(subscription, data, guildId, channelId);
+                        await this.process_subscription(subscription, killmail_data, guildId, channelId);
                     } catch (e) {
                         console.log(e);
                     }
@@ -162,7 +162,7 @@ export class ZKillSubscriber {
 
     private async process_subscription(
         subscription: Subscription,
-        data: any,
+        killmail_data: any,
         guildId: string,
         channelId: string,
     ) {
@@ -170,7 +170,7 @@ export class ZKillSubscriber {
         let requireSend = false;
         let systemData = null;
 
-        if (subscription.minValue > data.zkb.totalValue) {
+        if (subscription.minValue > killmail_data.zkb.totalValue) {
             return; // Do not send if below the min value
         }
 
@@ -178,12 +178,12 @@ export class ZKillSubscriber {
 
         case SubscriptionType.PUBLIC: {
             if (subscription.limitTypes.size === 0) {
-                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data);
+                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, killmail_data);
                 return;
             }
             if (hasLimitType(subscription, LimitType.SHIP_TYPE_ID)) {
                 const __ret = await this.sendIfAnyShipsMatchLimitFilter(
-                    data,
+                    killmail_data,
                     <string>getLimitType(subscription, LimitType.SHIP_TYPE_ID),
                     subscription.limitAlsoComparesAttacker,
                 );
@@ -194,7 +194,7 @@ export class ZKillSubscriber {
             if (hasLimitType(subscription, LimitType.REGION) ||
                 hasLimitType(subscription, LimitType.CONSTELLATION) ||
                 hasLimitType(subscription, LimitType.SYSTEM)) {
-                requireSend = await this.isInLocationLimit(subscription, data.solar_system_id);
+                requireSend = await this.isInLocationLimit(subscription, killmail_data.solar_system_id);
                 if (!requireSend) return;
             }
             if (requireSend) {
@@ -203,7 +203,7 @@ export class ZKillSubscriber {
                     guildId,
                     channelId,
                     subscription.subType,
-                    data,
+                    killmail_data,
                     subscription.id,
                     color,
                 );
@@ -212,13 +212,13 @@ export class ZKillSubscriber {
         }
 
         case SubscriptionType.REGION: {
-            systemData = await this.getSystemData(data.solar_system_id);
+            systemData = await this.getSystemData(killmail_data.solar_system_id);
             if (systemData.regionId !== subscription.id) {
                 return;
             }
             if (hasLimitType(subscription, LimitType.SHIP_TYPE_ID)) {
                 const __ret = await this.sendIfAnyShipsMatchLimitFilter(
-                    data,
+                    killmail_data,
                     <string>getLimitType(subscription, LimitType.SHIP_TYPE_ID),
                     subscription.limitAlsoComparesAttacker,
                 );
@@ -233,7 +233,7 @@ export class ZKillSubscriber {
                     guildId,
                     channelId,
                     subscription.subType,
-                    data,
+                    killmail_data,
                     subscription.id,
                     color,
                 );
@@ -242,25 +242,25 @@ export class ZKillSubscriber {
         }
 
         case SubscriptionType.CONSTELLATION:
-            systemData = await this.getSystemData(data.solar_system_id);
+            systemData = await this.getSystemData(killmail_data.solar_system_id);
             if (systemData.constellationId === subscription.id) {
-                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data);
+                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, killmail_data);
             }
             break;
 
         case SubscriptionType.SYSTEM:
-            if (data.solar_system_id === subscription.id) {
-                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data);
+            if (killmail_data.solar_system_id === subscription.id) {
+                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, killmail_data);
             }
             break;
 
         case SubscriptionType.ALLIANCE:
-            if (data.victim.alliance_id === subscription.id) {
+            if (killmail_data.victim.alliance_id === subscription.id) {
                 requireSend = true;
                 color = 'RED';
             }
             if (!requireSend) {
-                for (const attacker of data.attackers) {
+                for (const attacker of killmail_data.attackers) {
                     if (attacker.alliance_id === subscription.id) {
                         requireSend = true;
                         break;
@@ -268,20 +268,20 @@ export class ZKillSubscriber {
                 }
             }
             if (requireSend) {
-                if (subscription.limitTypes.size !== 0 && !await this.isInLocationLimit(subscription, data.solar_system_id)) {
+                if (subscription.limitTypes.size !== 0 && !await this.isInLocationLimit(subscription, killmail_data.solar_system_id)) {
                     return;
                 }
-                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data, subscription.id, color);
+                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, killmail_data, subscription.id, color);
             }
             break;
 
         case SubscriptionType.CORPORATION:
-            if (data.victim.corporation_id === subscription.id) {
+            if (killmail_data.victim.corporation_id === subscription.id) {
                 requireSend = true;
                 color = 'RED';
             }
             if (!requireSend) {
-                for (const attacker of data.attackers) {
+                for (const attacker of killmail_data.attackers) {
                     if (attacker.corporation_id === subscription.id) {
                         requireSend = true;
                         break;
@@ -289,20 +289,20 @@ export class ZKillSubscriber {
                 }
             }
             if (requireSend) {
-                if (subscription.limitTypes.size !== 0 && !await this.isInLocationLimit(subscription, data.solar_system_id)) {
+                if (subscription.limitTypes.size !== 0 && !await this.isInLocationLimit(subscription, killmail_data.solar_system_id)) {
                     return;
                 }
-                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data, subscription.id, color);
+                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, killmail_data, subscription.id, color);
             }
             break;
 
         case SubscriptionType.CHARACTER:
-            if (data.victim.character_id === subscription.id) {
+            if (killmail_data.victim.character_id === subscription.id) {
                 requireSend = true;
                 color = 'RED';
             }
             if (!requireSend) {
-                for (const attacker of data.attackers) {
+                for (const attacker of killmail_data.attackers) {
                     if (attacker.character_id === subscription.id) {
                         requireSend = true;
                         break;
@@ -310,10 +310,10 @@ export class ZKillSubscriber {
                 }
             }
             if (requireSend) {
-                if (subscription.limitTypes.size !== 0 && !await this.isInLocationLimit(subscription, data.solar_system_id)) {
+                if (subscription.limitTypes.size !== 0 && !await this.isInLocationLimit(subscription, killmail_data.solar_system_id)) {
                     return;
                 }
-                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data, subscription.id, color);
+                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, killmail_data, subscription.id, color);
             }
             break;
         default:
@@ -374,74 +374,123 @@ export class ZKillSubscriber {
         guildId: string,
         channelId: string,
         subType: SubscriptionType,
-        data: any,
+        killmail_data: any,
         subId?: number,
         messageColor: ColorResolvable = 'GREY',
     ) {
         await this.asyncLock.acquire('sendKill', async (done) => {
-            const cache = MemoryCache.get(`${channelId}_${data.killmail_id}`);
+            console.log(killmail_data);
+            const cache = MemoryCache.get(`${channelId}_${killmail_data.killmail_id}`);
             // Mail was already send, prevent from sending twice
             if (cache) {
                 done();
                 return;
             }
             const c = <TextChannel>await this.doClient.channels.cache.get(channelId);
-            if (c) {
-                let embedding = null;
-                try {
-                    embedding = await ogs({url: data.zkb.url});
-                } catch (e) {
-                    // Do nothing
+            if (!c) {
+                await this.unsubscribe(subType, guildId, channelId, subId);
+            }
+            let embedding = null;
+            try {
+                // The ogs function is will accomplish the following:
+                // 1. Fetch the URL
+                // 2. Parse the HTML
+                // 3. Extract the Open Graph data
+                // 4. Return the data
+                // An example out of the ogs function looks like this:
+                // {
+                //     "result": {
+                //         "ogTitle": "EVE Online",
+                //         "ogDescription": "EVE Online is a community-driven spaceship MMO where players can play for free, choosing their own path from countless options. Experience space exploration, immense PvP and PvE battles, mining, industry and a thriving player economy in an ever-expanding sandbox.",
+                //         "ogImage": {
+                //             "url": "https://web.ccpgamescdn.com/eveonlineassets/developers/eve-sso-login-black-small.png",
+                //             "width": 200,
+                //             "height": 200,
+                //             "type": "image/png"
+                //         },
+                //         "ogUrl": "https://www.eveonline.com/",
+                //         "ogSiteName": "EVE Online",
+                //         "ogType": "website",
+                //         "ogLocale": "en_US",
+                //         "ogLocaleAlternate": "en_US",
+                //         "ogUpdatedTime": "2020-10-29T15:00:00.000Z",
+                //        "ogImageSecureUrl": "https://web.ccpgamescdn.com/eveonlineassets/developers/eve-sso-login-black-small.png",
+                //         "ogImageType": "image/png",
+                //         "ogImageWidth": 200,
+                //         "ogImageHeight": 200,
+                //         "ogImageAlt": "EVE Online",
+                //         "ogDescriptionLength": 200,
+                //         "ogTitleLength": 9,
+                //         "ogUrlLength": 24,
+                //         "ogSiteNameLength": 9,
+                //         "ogTypeLength": 8,
+                //         "ogLocaleLength": 5,
+                //         "ogLocaleAlternateLength": 5,
+                //         "ogImageSecureUrlLength": 59,
+                //         "ogImageTypeLength": 10,
+                //         "ogImageAltLength": 9,
+                //         "success": true
+                //     },
+                //     "error": false
+                // }
+                // The result object contains all the data we need to create the embed.
+                // The error property is true if an error occurred.
+                // The result object is null if the URL is not a valid URL.
+                // The result object is undefined if the URL is not a valid URL.
+                embedding = await ogs({url: killmail_data.zkb.url});
+            } catch (e) {
+                console.log('Error while embedding: ' + e);
+            }
+            try {
+                console.log('Embedding: ' + embedding);
+                const content: MessageOptions = {};
+                if (embedding?.error === false) {
+                    content.embeds = [{
+                        title: embedding?.result.ogTitle,
+                        description: embedding?.result.ogDescription,
+                        timestamp: killmail_data.killmail_time ?? new Date().valueOf(),
+                        thumbnail: {
+                            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                            // @ts-ignore
+                            url: embedding?.result.ogImage?.url,
+                            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                            // @ts-ignore
+                            height: embedding?.result.ogImage?.height,
+                            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                            // @ts-ignore
+                            width: embedding?.result.ogImage?.width
+                        },
+                        url: killmail_data.zkb.url,
+                        color: messageColor,
+                        // fields: [new EmbedField {
+                        //
+                        // }],
+                    }];
+                } else {
+                    content.content = killmail_data.zkb.url;
                 }
-                try {
-                    const content: MessageOptions = {};
-                    if (embedding?.error === false) {
-                        content.embeds = [{
-                            title: embedding?.result.ogTitle,
-                            description: embedding?.result.ogDescription,
-                            thumbnail: {
-                                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                                // @ts-ignore
-                                url: embedding?.result.ogImage?.url,
-                                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                                // @ts-ignore
-                                height: embedding?.result.ogImage?.height,
-                                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                                // @ts-ignore
-                                width: embedding?.result.ogImage?.width
-                            },
-                            url: data.zkb.url,
-                            color: messageColor
-                        }];
-                    } else {
-                        content.content = data.zkb.url;
-                    }
-                    await c.send(
-                        content
-                    );
-                    MemoryCache.put(`${channelId}_${data.killmail_id}`, 'send', 60000); // Prevent from sending again, cache it for 1 min
-                } catch (e) {
-                    if (e instanceof DiscordAPIError && e.httpStatus === 403) {
-                        try {
-                            const owner = await c.guild.fetchOwner();
-                            await owner.send(`The bot unsubscribed from channel ${c.name} on ${c.guild.name} because it was not able to write in it! Fix the permissions and subscribe again!`);
-                            console.log(`Sent message to owner of ${c.guild.name} to notify him/her about the permission problem.`);
-                        } catch (e) {
-                            console.log(e);
-                        }
-                        const subscriptionsInChannel = this.subscriptions.get(guildId)?.channels.get(channelId);
-                        if (subscriptionsInChannel) {
-                            // Unsubscribe all events from channel
-                            subscriptionsInChannel.subscriptions.forEach((subscription) => {
-                                this.unsubscribe(subscription.subType, guildId, channelId, subscription.id);
-                            });
-                        }
-                    } else {
+                await c.send(content);
+                // Prevent from sending again, cache it for 1 min
+                MemoryCache.put(`${channelId}_${killmail_data.killmail_id}`, 'send', 60000);
+            } catch (e) {
+                if (e instanceof DiscordAPIError && e.httpStatus === 403) {
+                    try {
+                        const owner = await c.guild.fetchOwner();
+                        await owner.send(`The bot unsubscribed from channel ${c.name} on ${c.guild.name} because it was not able to write in it! Fix the permissions and subscribe again!`);
+                        console.log(`Sent message to owner of ${c.guild.name} to notify him/her about the permission problem.`);
+                    } catch (e) {
                         console.log(e);
                     }
+                    const subscriptionsInChannel = this.subscriptions.get(guildId)?.channels.get(channelId);
+                    if (subscriptionsInChannel) {
+                        // Unsubscribe all events from channel
+                        subscriptionsInChannel.subscriptions.forEach((subscription) => {
+                            this.unsubscribe(subscription.subType, guildId, channelId, subscription.id);
+                        });
+                    }
+                } else {
+                    console.log(e);
                 }
-            } else {
-                await this.unsubscribe(subType, guildId, channelId, subId);
             }
             done();
         });
