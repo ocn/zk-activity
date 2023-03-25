@@ -174,67 +174,6 @@ export class SubscribeCommand extends AbstractCommand {
                     .setRequired(false)
             ));
 
-        slashCommand.addSubcommand( new SlashCommandSubcommandBuilder().setName('region')
-            .setDescription('Subscribe character to channel')
-            .addNumberOption(option =>
-                option.setName('id')
-                    .setDescription('ID for the region')
-                    .setRequired(true)
-            )
-            .addStringOption(option =>
-                option.setName('limit-region-ids')
-                    .setDescription('Limit to region id, comma seperated ids')
-                    .setRequired(false)
-            )
-            .addStringOption(option =>
-                option.setName('limit-constellation-ids')
-                    .setDescription('Limit to constellation id, comma seperated ids')
-                    .setRequired(false)
-            )
-            .addStringOption(option =>
-                option.setName('limit-system-ids')
-                    .setDescription('Limit to system id, comma seperated ids')
-                    .setRequired(false)
-            )
-            .addStringOption(option =>
-                option.setName('limit-ship-ids')
-                    .setDescription('Limit to ship id, comma seperated ids')
-                    .setRequired(false)
-            )
-            .addNumberOption(option =>
-                option.setName('min-value')
-                    .setDescription('Minimum isk to show the entry')
-                    .setRequired(false)
-            ));
-
-        slashCommand.addSubcommand( new SlashCommandSubcommandBuilder().setName('constellation')
-            .setDescription('Subscribe character to channel')
-            .addNumberOption(option =>
-                option.setName('id')
-                    .setDescription('ID for the constellation')
-                    .setRequired(true)
-
-            )
-            .addNumberOption(option =>
-                option.setName('min-value')
-                    .setDescription('Minimum isk to show the entry')
-                    .setRequired(false)
-            ));
-
-        slashCommand.addSubcommand( new SlashCommandSubcommandBuilder().setName('system')
-            .setDescription('Subscribe character to channel')
-            .addNumberOption(option =>
-                option.setName('id')
-                    .setDescription('ID for the system')
-                    .setRequired(true)
-
-            )
-            .addNumberOption(option =>
-                option.setName('min-value')
-                    .setDescription('Minimum isk to show the entry')
-                    .setRequired(false)
-            ));
-
         slashCommand.addSubcommand( new SlashCommandSubcommandBuilder().setName('public')
             .addNumberOption(option =>
                 option.setName('min-value')
@@ -242,7 +181,12 @@ export class SubscribeCommand extends AbstractCommand {
                     .setRequired(false)
             )
             .addStringOption(option =>
-                option.setName('limit-ship-ids')
+                option.setName('limit-included-ship-ids')
+                    .setDescription('Limit to ship id, comma seperated ids')
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName('limit-excluded-ship-ids')
                     .setDescription('Limit to ship id, comma seperated ids')
                     .setRequired(false)
             )
@@ -251,9 +195,29 @@ export class SubscribeCommand extends AbstractCommand {
                     .setDescription('Limit to region id, comma seperated ids')
                     .setRequired(false)
             )
+            .addStringOption(option =>
+                option.setName('limit-security')
+                    .setDescription('Limit to a maximum security')
+                    .setRequired(false)
+            )
             .addBooleanOption(option =>
-                option.setName('limit-compares-attackers')
+                option.setName('inclusion-limit-compares-attackers')
                     .setDescription('Enable if attackers should be considered when sending mails')
+                    .setRequired(false)
+            )
+            .addBooleanOption(option =>
+                option.setName('inclusion-limit-compares-attacker-weapons')
+                    .setDescription('Enable if attackers should be considered when sending mails')
+                    .setRequired(false)
+            )
+            .addBooleanOption(option =>
+                option.setName('exclusion-limit-compares-attackers')
+                    .setDescription('Enable if attackers should be considered when rejecting mails')
+                    .setRequired(false)
+            )
+            .addBooleanOption(option =>
+                option.setName('exclusion-limit-compares-attacker-weapons')
+                    .setDescription('Enable if attackers should be considered when rejecting mails')
                     .setRequired(false)
             )
             .setDescription('Subscribe public feed to channel'));
