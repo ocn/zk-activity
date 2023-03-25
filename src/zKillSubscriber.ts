@@ -213,12 +213,16 @@ export class ZKillSubscriber {
                 );
                 requireSend = !__ret.requireSend;
                 color = __ret.color;
-                if (!requireSend) return;
+                if (!requireSend) {
+                    console.log(`limiting kill due to exclusion filter: ${getLimitType(subscription, LimitType.SHIP_EXCLUSION_TYPE_ID)}`);
+                    return;
+                }
             }
             if (hasLimitType(subscription, LimitType.SECURITY)) {
                 const systemData = await this.getSystemData(data.solar_system_id);
                 const maximumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY));
                 if (maximumSecurityStatus <= systemData.securityStatus) {
+                    console.log(`limiting kill due to security status: ${systemData.securityStatus} >= ${maximumSecurityStatus}`);
                     return;
                 }
             }
