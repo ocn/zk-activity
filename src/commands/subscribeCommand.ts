@@ -21,10 +21,10 @@ export class SubscribeCommand extends AbstractCommand {
         const limitShipsIncluded = interaction.options.getString('limit-included-ship-ids');
         const limitShipsExcluded = interaction.options.getString('limit-excluded-ship-ids');
         const limitSecurity = interaction.options.getString('limit-security');
-        let inclusionLimitComparesAttackers = interaction.options.getBoolean('inclusion-limit-compares-attackers');
-        let inclusionLimitComparesAttackerWeapons = interaction.options.getBoolean('inclusion-limit-compares-attacker-weapons');
-        let exclusionLimitComparesAttackers = interaction.options.getBoolean('exclusion-limit-compares-attackers');
-        let exclusionLimitComparesAttackerWeapons = interaction.options.getBoolean('exclusion-limit-compares-attacker-weapons');
+        let inclusionLimitComparesAttackers = interaction.options.getBoolean('in-limit-compares-attackers');
+        let inclusionLimitComparesAttackerWeapons = interaction.options.getBoolean('in-limit-compares-attacker-weps');
+        let exclusionLimitComparesAttackers = interaction.options.getBoolean('ex-limit-compares-attackers');
+        let exclusionLimitComparesAttackerWeapons = interaction.options.getBoolean('ex-limit-compares-attacker-weps');
         if (inclusionLimitComparesAttackers == null) {
             inclusionLimitComparesAttackers = true;
         }
@@ -201,22 +201,22 @@ export class SubscribeCommand extends AbstractCommand {
                     .setRequired(false)
             )
             .addBooleanOption(option =>
-                option.setName('inclusion-limit-compares-attackers')
+                option.setName('in-limit-compares-attackers')
                     .setDescription('Enable if attackers should be considered when sending mails')
                     .setRequired(false)
             )
             .addBooleanOption(option =>
-                option.setName('inclusion-limit-compares-attacker-weapons')
+                option.setName('in-limit-compares-attacker-weps')
                     .setDescription('Enable if attackers should be considered when sending mails')
                     .setRequired(false)
             )
             .addBooleanOption(option =>
-                option.setName('exclusion-limit-compares-attackers')
+                option.setName('ex-limit-compares-attackers')
                     .setDescription('Enable if attackers should be considered when rejecting mails')
                     .setRequired(false)
             )
             .addBooleanOption(option =>
-                option.setName('exclusion-limit-compares-attacker-weapons')
+                option.setName('ex-limit-compares-attacker-weps')
                     .setDescription('Enable if attackers should be considered when rejecting mails')
                     .setRequired(false)
             )
