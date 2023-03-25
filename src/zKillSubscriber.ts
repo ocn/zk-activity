@@ -22,7 +22,9 @@ export enum LimitType {
     REGION = 'region',
     CONSTELLATION = 'constellation',
     SYSTEM = 'system',
-    SHIP_TYPE_ID = 'type',
+    SHIP_INCLUSION_TYPE_ID = 'type',
+    SHIP_EXCLUSION_TYPE_ID = 'excludedType',
+    SECURITY = 'security',
 }
 
 interface SubscriptionGuild {
@@ -37,8 +39,18 @@ interface Subscription {
     subType: SubscriptionType
     id?: number
     minValue: number,
+    // Mapping of LimitType to the value(s) to compare against
     limitTypes: Map<LimitType, string>,
-    limitAlsoComparesAttacker: boolean
+    // If true, the limitTypes will be compared against the attacker's ship
+    inclusionLimitAlsoComparesAttacker: boolean
+    // If true, the limitTypes will be compared against the weapon type IDs on the attacker's ship
+    // zKillboard will sometimes list weapon type IDs as the attacking ship, instead of the actual ship type ID
+    inclusionLimitAlsoComparesAttackerWeapons: boolean
+    // If true, the limitTypes will be compared against the attacker's ship
+    exclusionLimitAlsoComparesAttacker: boolean
+    // If true, the limitTypes will be compared against the weapon type IDs on the attacker's ship
+    // zKillboard will sometimes list weapon type IDs as the attacking ship, instead of the actual ship type ID
+    exclusionLimitAlsoComparesAttackerWeapons: boolean
 }
 
 function hasLimitType(subscription: Subscription, limitType: LimitType): boolean {
@@ -133,7 +145,7 @@ export class ZKillSubscriber {
         };
         websocket.onclose = (e) => {
             console.log('Socket is closed. Reconnect will be attempted in 1 second.', e.reason);
-            setTimeout(function() {
+            setTimeout(function () {
                 ZKillSubscriber.connect(sub);
             }, 1000);
         };
@@ -168,7 +180,6 @@ export class ZKillSubscriber {
     ) {
         let color: ColorResolvable = 'GREEN';
         let requireSend = false;
-        let systemData = null;
 
         if (subscription.minValue > data.zkb.totalValue) {
             return; // Do not send if below the min value
@@ -181,13 +192,25 @@ export class ZKillSubscriber {
                 await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data);
                 return;
             }
-            if (hasLimitType(subscription, LimitType.SHIP_TYPE_ID)) {
+            if (hasLimitType(subscription, LimitType.SHIP_INCLUSION_TYPE_ID)) {
                 const __ret = await this.sendIfAnyShipsMatchLimitFilter(
                     data,
-                    <string>getLimitType(subscription, LimitType.SHIP_TYPE_ID),
-                    subscription.limitAlsoComparesAttacker,
+                    <string>getLimitType(subscription, LimitType.SHIP_INCLUSION_TYPE_ID),
+                    subscription.inclusionLimitAlsoComparesAttacker,
+                    subscription.inclusionLimitAlsoComparesAttackerWeapons,
                 );
                 requireSend = __ret.requireSend;
+                color = __ret.color;
+                if (!requireSend) return;
+            }
+            if (hasLimitType(subscription, LimitType.SHIP_EXCLUSION_TYPE_ID)) {
+                const __ret = await this.sendIfAnyShipsMatchLimitFilter(
+                    data,
+                    <string>getLimitType(subscription, LimitType.SHIP_EXCLUSION_TYPE_ID),
+                    subscription.exclusionLimitAlsoComparesAttacker,
+                    subscription.exclusionLimitAlsoComparesAttackerWeapons,
+                );
+                requireSend = !__ret.requireSend;
                 color = __ret.color;
                 if (!requireSend) return;
             }
@@ -211,49 +234,7 @@ export class ZKillSubscriber {
             break;
         }
 
-        case SubscriptionType.REGION: {
-            systemData = await this.getSystemData(data.solar_system_id);
-            if (systemData.regionId !== subscription.id) {
-                return;
-            }
-            if (hasLimitType(subscription, LimitType.SHIP_TYPE_ID)) {
-                const __ret = await this.sendIfAnyShipsMatchLimitFilter(
-                    data,
-                    <string>getLimitType(subscription, LimitType.SHIP_TYPE_ID),
-                    subscription.limitAlsoComparesAttacker,
-                );
-                requireSend = __ret.requireSend;
-                color = __ret.color;
-            } else {
-                requireSend = true;
-            }
-            if (requireSend) {
-                console.log('sending region-filter ship-limited kill');
-                await this.sendMessageToDiscord(
-                    guildId,
-                    channelId,
-                    subscription.subType,
-                    data,
-                    subscription.id,
-                    color,
-                );
-            }
-            break;
-        }
-
-        case SubscriptionType.CONSTELLATION:
-            systemData = await this.getSystemData(data.solar_system_id);
-            if (systemData.constellationId === subscription.id) {
-                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data);
-            }
-            break;
-
-        case SubscriptionType.SYSTEM:
-            if (data.solar_system_id === subscription.id) {
-                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data);
-            }
-            break;
-
+        // TODO: All the below need to support ship type ID filters
         case SubscriptionType.ALLIANCE:
             if (data.victim.alliance_id === subscription.id) {
                 requireSend = true;
@@ -274,7 +255,6 @@ export class ZKillSubscriber {
                 await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data, subscription.id, color);
             }
             break;
-
         case SubscriptionType.CORPORATION:
             if (data.victim.corporation_id === subscription.id) {
                 requireSend = true;
@@ -295,7 +275,6 @@ export class ZKillSubscriber {
                 await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data, subscription.id, color);
             }
             break;
-
         case SubscriptionType.CHARACTER:
             if (data.victim.character_id === subscription.id) {
                 requireSend = true;
@@ -320,7 +299,12 @@ export class ZKillSubscriber {
         }
     }
 
-    private async sendIfAnyShipsMatchLimitFilter(data: any, limitIds: string, alsoCompareAttackers: boolean) {
+    private async sendIfAnyShipsMatchLimitFilter(
+        data: any,
+        limitIds: string,
+        alsoCompareAttackers: boolean,
+        alsoCompareAttackerWeapons: boolean
+    ) {
         let color: ColorResolvable = 'GREEN';
         let requireSend = false;
         let groupId: number | string | null = null;
@@ -351,7 +335,7 @@ export class ZKillSubscriber {
                             break;
                         }
                     }
-                    if (attacker.weapon_type_id) {
+                    if (alsoCompareAttackerWeapons && attacker.weapon_type_id) {
                         groupId = await this.getGroupIdForEntityId(attacker.weapon_type_id);
                         if (groupId === permittedShipGroupId) {
                             console.log('attacker weapon groupId: ' + groupId);
@@ -463,7 +447,10 @@ export class ZKillSubscriber {
         guildId: string,
         channel: string,
         limitTypes: Map<LimitType, string>,
-        limitAlsoComparesAttacker: boolean,
+        inclusionLimitAlsoComparesAttacker: boolean,
+        inclusionLimitAlsoComparesAttackerWeapons: boolean,
+        exclusionLimitAlsoComparesAttacker: boolean,
+        exclusionLimitAlsoComparesAttackerWeapons: boolean,
         id?: number,
         minValue = 0,
     ) {
@@ -482,7 +469,10 @@ export class ZKillSubscriber {
                 id,
                 minValue,
                 limitTypes,
-                limitAlsoComparesAttacker
+                inclusionLimitAlsoComparesAttacker,
+                inclusionLimitAlsoComparesAttackerWeapons,
+                exclusionLimitAlsoComparesAttacker,
+                exclusionLimitAlsoComparesAttackerWeapons,
             });
         }
         fs.writeFileSync('./config/' + guildId + '.json', JSON.stringify(this.generateObject(guild)), 'utf8');
