@@ -18,12 +18,25 @@ export class SubscribeCommand extends AbstractCommand {
         const limitRegion = interaction.options.getString('limit-region-ids');
         const limitConstellation = interaction.options.getString('limit-constellation-ids');
         const limitSystem = interaction.options.getString('limit-system-ids');
-        const limitShips = interaction.options.getString('limit-ship-ids');
-        let limitComparesAttackers = interaction.options.getBoolean('limit-compares-attackers');
-        if (limitComparesAttackers == null) {
-            limitComparesAttackers = true;
+        const limitShipsIncluded = interaction.options.getString('limit-included-ship-ids');
+        const limitShipsExcluded = interaction.options.getString('limit-excluded-ship-ids');
+        const limitSecurity = interaction.options.getString('limit-security');
+        let inclusionLimitComparesAttackers = interaction.options.getBoolean('inclusion-limit-compares-attackers');
+        let inclusionLimitComparesAttackerWeapons = interaction.options.getBoolean('inclusion-limit-compares-attacker-weapons');
+        let exclusionLimitComparesAttackers = interaction.options.getBoolean('exclusion-limit-compares-attackers');
+        let exclusionLimitComparesAttackerWeapons = interaction.options.getBoolean('exclusion-limit-compares-attacker-weapons');
+        if (inclusionLimitComparesAttackers == null) {
+            inclusionLimitComparesAttackers = true;
         }
-
+        if (inclusionLimitComparesAttackerWeapons == null) {
+            inclusionLimitComparesAttackerWeapons = true;
+        }
+        if (exclusionLimitComparesAttackers == null) {
+            exclusionLimitComparesAttackers = true;
+        }
+        if (exclusionLimitComparesAttackerWeapons == null) {
+            exclusionLimitComparesAttackerWeapons = true;
+        }
         let reply = 'We subscribed to zkillboard channel: ' + interaction.options.getSubcommand();
         const limitTypes = new Map<LimitType, string>();
         if (limitRegion) {
@@ -38,16 +51,27 @@ export class SubscribeCommand extends AbstractCommand {
             limitTypes.set(LimitType.SYSTEM, limitSystem);
             reply += '\nSystem filter: + ' + limitRegion;
         }
-        if (limitShips) {
-            limitTypes.set(LimitType.SHIP_TYPE_ID, limitShips);
-            reply += '\nShip ID filter: + ' + limitShips;
+        if (limitShipsIncluded) {
+            limitTypes.set(LimitType.SHIP_INCLUSION_TYPE_ID, limitShipsIncluded);
+            reply += '\nShip ID Inclusion filter: + ' + limitShipsIncluded;
+        }
+        if (limitShipsExcluded) {
+            limitTypes.set(LimitType.SHIP_EXCLUSION_TYPE_ID, limitShipsExcluded);
+            reply += '\nShip ID Exclusion filter: - ' + limitShipsExcluded;
+        }
+        if (limitSecurity) {
+            limitTypes.set(LimitType.SECURITY, limitSecurity);
+            reply += '\nSecurity filter: + ' + limitSecurity;
         }
         sub.subscribe(
             subCommand, 
             interaction.guildId, 
             interaction.channelId, 
             limitTypes,
-            limitComparesAttackers,
+            inclusionLimitComparesAttackers,
+            inclusionLimitComparesAttackerWeapons,
+            exclusionLimitComparesAttackers,
+            exclusionLimitComparesAttackerWeapons,
             id ? id : undefined,
             minValue ? minValue : 0,
         );
