@@ -37,7 +37,8 @@ export class EsiClient {
             regionId: regionData.data.region_id,
             regionName: regionData.data.name,
             constellationId: constData.data.constellation_id,
-            constellationName: constData.data.name
+            constellationName: constData.data.name,
+            securityStatus: systemData.data.security_status,
         };
     }
 

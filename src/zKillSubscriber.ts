@@ -105,6 +105,7 @@ export interface SolarSystem {
     regionName: string;
     constellationId: number;
     constellationName: string;
+    securityStatus: number;
 }
 
 export class ZKillSubscriber {
@@ -214,6 +215,13 @@ export class ZKillSubscriber {
                 color = __ret.color;
                 if (!requireSend) return;
             }
+            if (hasLimitType(subscription, LimitType.SECURITY)) {
+                const systemData = await this.getSystemData(data.solar_system_id);
+                const maximumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY));
+                if (maximumSecurityStatus <= systemData.securityStatus) {
+                    return;
+                }
+            }
             if (hasLimitType(subscription, LimitType.REGION) ||
                 hasLimitType(subscription, LimitType.CONSTELLATION) ||
                 hasLimitType(subscription, LimitType.SYSTEM)) {
@@ -234,7 +242,7 @@ export class ZKillSubscriber {
             break;
         }
 
-        // TODO: All the below need to support ship type ID filters
+        // TODO: All the below need to support ship type ID filters and security filters
         case SubscriptionType.ALLIANCE:
             if (data.victim.alliance_id === subscription.id) {
                 requireSend = true;
