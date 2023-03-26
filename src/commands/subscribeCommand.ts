@@ -75,11 +75,11 @@ export class SubscribeCommand extends AbstractCommand {
         }
         if (limitSecurityMax) {
             limitTypes.set(LimitType.SECURITY_MAX, limitSecurityMax);
-            reply += '\nSecurity filter: + ' + limitSecurityMax;
+            reply += '\nMax Security filter: + ' + limitSecurityMax;
         }
         if (limitSecurityMin) {
             limitTypes.set(LimitType.SECURITY_MIN, limitSecurityMin);
-            reply += '\nSecurity filter: + ' + limitSecurityMin;
+            reply += '\nMin Security filter: + ' + limitSecurityMin;
         }
         sub.subscribe(
             subCommand, 
