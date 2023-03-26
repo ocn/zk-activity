@@ -6,6 +6,19 @@ import {LimitType, SubscriptionType, ZKillSubscriber} from '../zKillSubscriber';
 export class SubscribeCommand extends AbstractCommand {
     protected name = 'zkill-subscribe';
 
+    protected MIN_VALUE = 'min-value';
+    protected LIMIT_REGION_IDS = 'limit-region-ids';
+    protected LIMIT_CONSTELLATION_IDS = 'limit-constellation-ids';
+    protected LIMIT_SYSTEM_IDS = 'limit-system-ids';
+    protected LIMIT_INCLUDED_SHIP_IDS = 'limit-included-ship-ids';
+    protected LIMIT_EXCLUDED_SHIP_IDS = 'limit-excluded-ship-ids';
+    protected LIMIT_SECURITY_MAX = 'limit-security-max';
+    protected LIMIT_SECURITY_MIN = 'limit-security-min';
+    protected INCLUSION_LIMIT_COMPARES_ATTACKERS = 'in-limit-compares-attackers';
+    protected INCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS = 'in-limit-compares-attacker-weps';
+    protected EXCLUSION_LIMIT_COMPARES_ATTACKERS = 'ex-limit-compares-attackers';
+    protected EXCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS = 'ex-limit-compares-attacker-weps';
+
     executeCommand(interaction: CommandInteraction): void {
         const sub = ZKillSubscriber.getInstance();
         if(!interaction.inGuild()) {
@@ -14,17 +27,18 @@ export class SubscribeCommand extends AbstractCommand {
         }
         const subCommand = interaction.options.getSubcommand(true) as SubscriptionType;
         const id = interaction.options.getNumber('id', false);
-        const minValue = interaction.options.getNumber('min-value');
-        const limitRegion = interaction.options.getString('limit-region-ids');
-        const limitConstellation = interaction.options.getString('limit-constellation-ids');
-        const limitSystem = interaction.options.getString('limit-system-ids');
-        const limitShipsIncluded = interaction.options.getString('limit-included-ship-ids');
-        const limitShipsExcluded = interaction.options.getString('limit-excluded-ship-ids');
-        const limitSecurity = interaction.options.getString('limit-security');
-        let inclusionLimitComparesAttackers = interaction.options.getBoolean('in-limit-compares-attackers');
-        let inclusionLimitComparesAttackerWeapons = interaction.options.getBoolean('in-limit-compares-attacker-weps');
-        let exclusionLimitComparesAttackers = interaction.options.getBoolean('ex-limit-compares-attackers');
-        let exclusionLimitComparesAttackerWeapons = interaction.options.getBoolean('ex-limit-compares-attacker-weps');
+        const minValue = interaction.options.getNumber(this.MIN_VALUE);
+        const limitRegion = interaction.options.getString(this.LIMIT_REGION_IDS);
+        const limitConstellation = interaction.options.getString(this.LIMIT_CONSTELLATION_IDS);
+        const limitSystem = interaction.options.getString(this.LIMIT_SYSTEM_IDS);
+        const limitShipsIncluded = interaction.options.getString(this.LIMIT_INCLUDED_SHIP_IDS);
+        const limitShipsExcluded = interaction.options.getString(this.LIMIT_EXCLUDED_SHIP_IDS);
+        const limitSecurityMax = interaction.options.getString(this.LIMIT_SECURITY_MAX);
+        const limitSecurityMin = interaction.options.getString(this.LIMIT_SECURITY_MIN);
+        let inclusionLimitComparesAttackers = interaction.options.getBoolean(this.INCLUSION_LIMIT_COMPARES_ATTACKERS);
+        let inclusionLimitComparesAttackerWeapons = interaction.options.getBoolean(this.INCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS);
+        let exclusionLimitComparesAttackers = interaction.options.getBoolean(this.EXCLUSION_LIMIT_COMPARES_ATTACKERS);
+        let exclusionLimitComparesAttackerWeapons = interaction.options.getBoolean(this.EXCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS);
         if (inclusionLimitComparesAttackers == null) {
             inclusionLimitComparesAttackers = true;
         }
@@ -59,9 +73,13 @@ export class SubscribeCommand extends AbstractCommand {
             limitTypes.set(LimitType.SHIP_EXCLUSION_TYPE_ID, limitShipsExcluded);
             reply += '\nShip ID Exclusion filter: - ' + limitShipsExcluded;
         }
-        if (limitSecurity) {
-            limitTypes.set(LimitType.SECURITY, limitSecurity);
-            reply += '\nSecurity filter: + ' + limitSecurity;
+        if (limitSecurityMax) {
+            limitTypes.set(LimitType.SECURITY_MAX, limitSecurityMax);
+            reply += '\nSecurity filter: + ' + limitSecurityMax;
+        }
+        if (limitSecurityMin) {
+            limitTypes.set(LimitType.SECURITY_MIN, limitSecurityMin);
+            reply += '\nSecurity filter: + ' + limitSecurityMin;
         }
         sub.subscribe(
             subCommand, 
@@ -176,47 +194,52 @@ export class SubscribeCommand extends AbstractCommand {
 
         slashCommand.addSubcommand( new SlashCommandSubcommandBuilder().setName('public')
             .addNumberOption(option =>
-                option.setName('min-value')
+                option.setName(this.MIN_VALUE)
                     .setDescription('Minimum isk to show the entry')
                     .setRequired(false)
             )
             .addStringOption(option =>
-                option.setName('limit-included-ship-ids')
+                option.setName(this.LIMIT_INCLUDED_SHIP_IDS)
                     .setDescription('Limit to ship id, comma seperated ids')
                     .setRequired(false)
             )
             .addStringOption(option =>
-                option.setName('limit-excluded-ship-ids')
+                option.setName(this.LIMIT_EXCLUDED_SHIP_IDS)
                     .setDescription('Limit to ship id, comma seperated ids')
                     .setRequired(false)
             )
             .addStringOption(option =>
-                option.setName('limit-region-ids')
+                option.setName(this.LIMIT_REGION_IDS)
                     .setDescription('Limit to region id, comma seperated ids')
                     .setRequired(false)
             )
             .addStringOption(option =>
-                option.setName('limit-security')
+                option.setName(this.LIMIT_SECURITY_MAX)
                     .setDescription('Limit to a maximum security')
                     .setRequired(false)
             )
+            .addStringOption(option =>
+                option.setName(this.LIMIT_SECURITY_MIN)
+                    .setDescription('Limit to a minimum security')
+                    .setRequired(false)
+            )
             .addBooleanOption(option =>
-                option.setName('in-limit-compares-attackers')
+                option.setName(this.INCLUSION_LIMIT_COMPARES_ATTACKERS)
                     .setDescription('Enable if attackers should be considered when sending mails')
                     .setRequired(false)
             )
             .addBooleanOption(option =>
-                option.setName('in-limit-compares-attacker-weps')
+                option.setName(this.INCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS)
                     .setDescription('Enable if attackers should be considered when sending mails')
                     .setRequired(false)
             )
             .addBooleanOption(option =>
-                option.setName('ex-limit-compares-attackers')
+                option.setName(this.EXCLUSION_LIMIT_COMPARES_ATTACKERS)
                     .setDescription('Enable if attackers should be considered when rejecting mails')
                     .setRequired(false)
             )
             .addBooleanOption(option =>
-                option.setName('ex-limit-compares-attacker-weps')
+                option.setName(this.EXCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS)
                     .setDescription('Enable if attackers should be considered when rejecting mails')
                     .setRequired(false)
             )
