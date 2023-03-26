@@ -24,7 +24,8 @@ export enum LimitType {
     SYSTEM = 'system',
     SHIP_INCLUSION_TYPE_ID = 'type',
     SHIP_EXCLUSION_TYPE_ID = 'excludedType',
-    SECURITY = 'security',
+    SECURITY_MAX = 'securityMax',
+    SECURITY_MIN = 'securityMin',
 }
 
 interface SubscriptionGuild {
@@ -204,25 +205,19 @@ export class ZKillSubscriber {
                 color = __ret.color;
                 if (!requireSend) return;
             }
-            if (hasLimitType(subscription, LimitType.SHIP_EXCLUSION_TYPE_ID)) {
-                const __ret = await this.sendIfAnyShipsMatchLimitFilter(
-                    data,
-                    <string>getLimitType(subscription, LimitType.SHIP_EXCLUSION_TYPE_ID),
-                    subscription.exclusionLimitAlsoComparesAttacker,
-                    subscription.exclusionLimitAlsoComparesAttackerWeapons,
-                );
-                requireSend = !__ret.requireSend;
-                color = __ret.color;
-                if (!requireSend) {
-                    console.log(`limiting kill due to exclusion filter: ${getLimitType(subscription, LimitType.SHIP_EXCLUSION_TYPE_ID)}`);
+            if (hasLimitType(subscription, LimitType.SECURITY_MAX)) {
+                const systemData = await this.getSystemData(data.solar_system_id);
+                const maximumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MAX));
+                if (maximumSecurityStatus <= systemData.securityStatus) {
+                    console.log(`limiting kill due to maximum security status filter: ${systemData.securityStatus} >= ${maximumSecurityStatus}`);
                     return;
                 }
             }
-            if (hasLimitType(subscription, LimitType.SECURITY)) {
+            if (hasLimitType(subscription, LimitType.SECURITY_MIN)) {
                 const systemData = await this.getSystemData(data.solar_system_id);
-                const maximumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY));
-                if (maximumSecurityStatus <= systemData.securityStatus) {
-                    console.log(`limiting kill due to security status: ${systemData.securityStatus} >= ${maximumSecurityStatus}`);
+                const minimumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MIN));
+                if (minimumSecurityStatus >= systemData.securityStatus) {
+                    console.log(`limiting kill due to minimum security status filter: ${systemData.securityStatus} <= ${minimumSecurityStatus}`);
                     return;
                 }
             }
@@ -247,6 +242,7 @@ export class ZKillSubscriber {
         }
 
         // TODO: All the below need to support ship type ID filters and security filters
+        // Or, just remove all this b/c I don't use it?
         case SubscriptionType.ALLIANCE:
             if (data.victim.alliance_id === subscription.id) {
                 requireSend = true;
