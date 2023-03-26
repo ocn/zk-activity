@@ -216,8 +216,8 @@ export class ZKillSubscriber {
             if (hasLimitType(subscription, LimitType.SECURITY_MIN)) {
                 const systemData = await this.getSystemData(data.solar_system_id);
                 const minimumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MIN));
-                if (minimumSecurityStatus >= systemData.securityStatus) {
-                    console.log(`limiting kill due to minimum security status filter: ${systemData.securityStatus} <= ${minimumSecurityStatus}`);
+                if (minimumSecurityStatus > systemData.securityStatus) {
+                    console.log(`limiting kill due to minimum security status filter: ${systemData.securityStatus} < ${minimumSecurityStatus}`);
                     return;
                 }
             }
