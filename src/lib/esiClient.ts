@@ -42,6 +42,14 @@ export class EsiClient {
         };
     }
 
+    async getTypeName(typeId: number): Promise<string> {
+        const itemData = await this.fetch(GET_TYPE_DATA_URL.replace('%1', typeId.toString()));
+        if(itemData.data.error) {
+            throw new Error('ITEM_FETCH_ERROR');
+        }
+        return itemData.data.name;
+    }
+
     async getTypeGroupId(shipId: number): Promise<number> {
         const itemData = await this.fetch(GET_TYPE_DATA_URL.replace('%1', shipId.toString()));
         if(itemData.data.error) {

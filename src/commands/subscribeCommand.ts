@@ -6,6 +6,7 @@ import {LimitType, SubscriptionType, ZKillSubscriber} from '../zKillSubscriber';
 export class SubscribeCommand extends AbstractCommand {
     protected name = 'zkill-subscribe';
 
+    protected ID = 'id';
     protected MIN_VALUE = 'min-value';
     protected LIMIT_REGION_IDS = 'limit-region-ids';
     protected LIMIT_CONSTELLATION_IDS = 'limit-constellation-ids';
@@ -18,15 +19,17 @@ export class SubscribeCommand extends AbstractCommand {
     protected INCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS = 'in-limit-compares-attacker-weps';
     protected EXCLUSION_LIMIT_COMPARES_ATTACKERS = 'ex-limit-compares-attackers';
     protected EXCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS = 'ex-limit-compares-attacker-weps';
+    protected REQUIRED_NAME_FRAGMENT = 'required-name-fragment';
 
     executeCommand(interaction: CommandInteraction): void {
         const sub = ZKillSubscriber.getInstance();
-        if(!interaction.inGuild()) {
+        if (!interaction.inGuild()) {
+            // @ts-ignore
             interaction.reply('Subscription is not possible in PM!');
             return;
         }
         const subCommand = interaction.options.getSubcommand(true) as SubscriptionType;
-        const id = interaction.options.getNumber('id', false);
+        const id = interaction.options.getNumber(this.ID, true);
         const minValue = interaction.options.getNumber(this.MIN_VALUE);
         const limitRegion = interaction.options.getString(this.LIMIT_REGION_IDS);
         const limitConstellation = interaction.options.getString(this.LIMIT_CONSTELLATION_IDS);
@@ -35,6 +38,7 @@ export class SubscribeCommand extends AbstractCommand {
         const limitShipsExcluded = interaction.options.getString(this.LIMIT_EXCLUDED_SHIP_IDS);
         const limitSecurityMax = interaction.options.getString(this.LIMIT_SECURITY_MAX);
         const limitSecurityMin = interaction.options.getString(this.LIMIT_SECURITY_MIN);
+        let requiredNameFragment = interaction.options.getString(this.REQUIRED_NAME_FRAGMENT);
         let inclusionLimitComparesAttackers = interaction.options.getBoolean(this.INCLUSION_LIMIT_COMPARES_ATTACKERS);
         let inclusionLimitComparesAttackerWeapons = interaction.options.getBoolean(this.INCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS);
         let exclusionLimitComparesAttackers = interaction.options.getBoolean(this.EXCLUSION_LIMIT_COMPARES_ATTACKERS);
@@ -81,10 +85,16 @@ export class SubscribeCommand extends AbstractCommand {
             limitTypes.set(LimitType.SECURITY_MIN, limitSecurityMin);
             reply += '\nMin Security filter: + ' + limitSecurityMin;
         }
+        if (requiredNameFragment) {
+            limitTypes.set(LimitType.NAME_FRAGMENT, requiredNameFragment);
+            reply += '\nRequired name fragment: + ' + requiredNameFragment;
+        } else if (requiredNameFragment == null) {
+            requiredNameFragment = '';
+        }
         sub.subscribe(
-            subCommand, 
-            interaction.guildId, 
-            interaction.channelId, 
+            subCommand,
+            interaction.guildId,
+            interaction.channelId,
             limitTypes,
             inclusionLimitComparesAttackers,
             inclusionLimitComparesAttackerWeapons,
@@ -94,10 +104,10 @@ export class SubscribeCommand extends AbstractCommand {
             minValue ? minValue : 0,
         );
 
-        if(id) {
+        if (id) {
             reply += ' ID: ' + id;
         }
-        if(minValue) {
+        if (minValue) {
             reply += ' Min Value: ' + minValue.toLocaleString('en');
         }
         interaction.reply({content: reply, ephemeral: true});
@@ -108,10 +118,10 @@ export class SubscribeCommand extends AbstractCommand {
             .setDescription('Subscribe to zkill');
 
 
-        slashCommand.addSubcommand( new SlashCommandSubcommandBuilder().setName('corporation')
+        slashCommand.addSubcommand(new SlashCommandSubcommandBuilder().setName('corporation')
             .setDescription('Subscribe corporation to channel')
             .addNumberOption(option =>
-                option.setName('id')
+                option.setName(this.ID)
                     .setDescription('ID for the corporation')
                     .setRequired(true)
             )
@@ -136,10 +146,10 @@ export class SubscribeCommand extends AbstractCommand {
                     .setRequired(false)
             ));
 
-        slashCommand.addSubcommand( new SlashCommandSubcommandBuilder().setName('alliance')
+        slashCommand.addSubcommand(new SlashCommandSubcommandBuilder().setName('alliance')
             .setDescription('Subscribe alliance to channel')
             .addNumberOption(option =>
-                option.setName('id')
+                option.setName(this.ID)
                     .setDescription('ID for the alliance')
                     .setRequired(true)
             )
@@ -164,13 +174,12 @@ export class SubscribeCommand extends AbstractCommand {
                     .setRequired(false)
             ));
 
-        slashCommand.addSubcommand( new SlashCommandSubcommandBuilder().setName('character')
+        slashCommand.addSubcommand(new SlashCommandSubcommandBuilder().setName('character')
             .setDescription('Subscribe character to channel')
             .addNumberOption(option =>
-                option.setName('id')
+                option.setName(this.ID)
                     .setDescription('ID for the character')
                     .setRequired(true)
-
             )
             .addNumberOption(option =>
                 option.setName('min-value')
@@ -178,13 +187,12 @@ export class SubscribeCommand extends AbstractCommand {
                     .setRequired(false)
             ));
 
-        slashCommand.addSubcommand( new SlashCommandSubcommandBuilder().setName('group')
+        slashCommand.addSubcommand(new SlashCommandSubcommandBuilder().setName('group')
             .setDescription('Subscribe group to channel')
             .addNumberOption(option =>
-                option.setName('id')
+                option.setName(this.ID)
                     .setDescription('ID for the group')
                     .setRequired(true)
-
             )
             .addNumberOption(option =>
                 option.setName('min-value')
@@ -192,7 +200,12 @@ export class SubscribeCommand extends AbstractCommand {
                     .setRequired(false)
             ));
 
-        slashCommand.addSubcommand( new SlashCommandSubcommandBuilder().setName('public')
+        slashCommand.addSubcommand(new SlashCommandSubcommandBuilder().setName('public')
+            .addNumberOption(option =>
+                option.setName(this.ID)
+                    .setDescription('ID for public feed')
+                    .setRequired(true)
+            )
             .addNumberOption(option =>
                 option.setName(this.MIN_VALUE)
                     .setDescription('Minimum isk to show the entry')
@@ -221,6 +234,11 @@ export class SubscribeCommand extends AbstractCommand {
             .addStringOption(option =>
                 option.setName(this.LIMIT_SECURITY_MIN)
                     .setDescription('Limit to a minimum security')
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName(this.REQUIRED_NAME_FRAGMENT)
+                    .setDescription('Require a name fragment in the name of the matched type IDs')
                     .setRequired(false)
             )
             .addBooleanOption(option =>
