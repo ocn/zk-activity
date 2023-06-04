@@ -16,6 +16,10 @@
     "ws": "^8.7.0"
   },
   "devDependencies": {
+    "jest": "^27.3.1",
+    "@jest/expect": "^28.1.0",
+    "@types/jest": "^27.0.2",
+    "ts-jest": "^27.0.7",
     "@types/async-lock": "^1.1.5",
     "@types/memory-cache": "^0.2.2",
     "@typescript-eslint/eslint-plugin": "^5.27.0",
@@ -30,7 +34,33 @@
   },
   "scripts": {
     "start": "cd dist && node index",
-    "build": "yarn eslint . && ./node_modules/typescript/bin/tsc",
-    "start.dev": "yarn && nodemon --ignore ./dist -e ts,twig,html,jpg,png,gif,svg,json --exec \"(yarn eslint . && ./node_modules/typescript/bin/tsc && cd dist && node index) || exit 1\""
+    "build": "./node_modules/typescript/bin/tsc",
+    "start.dev": "yarn && nodemon --ignore ./dist -e ts,twig,html,jpg,png,gif,svg,json --exec \"(yarn eslint . && ./node_modules/typescript/bin/tsc && cd dist && node index) || exit 1\"",
+    "test": "yarn jest",
+    "coverage": "yarn jest --coverage",
+    "lint": "yarn eslint 'src/**/*.ts'",
+    "lint:fix": "yarn eslint --fix 'src/**/*.ts'"
+  },
+  "jest": {
+    "transform": {
+      "^.+\\.ts?$": "ts-jest"
+    },
+    "testEnvironment": "node",
+    "testRegex": "/tests/.*\\.(test|spec)?\\.(ts|tsx|js)$",
+    "testPathIgnorePatterns": [
+      "<rootDir>/dist"
+    ],
+    "moduleFileExtensions": [
+      "ts",
+      "tsx",
+      "js",
+      "jsx",
+      "json",
+      "node"
+    ],
+    "moduleDirectories": [
+      "<rootDir>/node_modules",
+      "<rootDir>/src"
+    ]
   }
 }

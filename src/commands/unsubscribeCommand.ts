@@ -9,6 +9,7 @@ export class UnsubscribeCommand extends AbstractCommand {
     executeCommand(interaction: CommandInteraction): void {
         const sub = ZKillSubscriber.getInstance();
         if(!interaction.inGuild()) {
+            // @ts-ignore
             interaction.reply('Subscription is not possible in PM!');
             return;
         }

@@ -26,6 +26,8 @@ export enum LimitType {
     SHIP_EXCLUSION_TYPE_ID = 'excludedType',
     SECURITY_MAX = 'securityMax',
     SECURITY_MIN = 'securityMin',
+    // A partial name of the entity type to require for sending
+    NAME_FRAGMENT = 'nameFragment',
 }
 
 interface SubscriptionGuild {
@@ -114,8 +116,12 @@ export class ZKillSubscriber {
     protected doClient: Client;
 
     protected subscriptions: Map<string, SubscriptionGuild>;
+    // Mapping of a solar system type ID to a description
     protected systems: Map<number, SolarSystem>;
+    // Mapping of ship type ID to group ID
     protected ships: Map<number, number>;
+    // Mapping of ship type ID to name
+    protected names: Map<number, string>;
     protected rest: REST;
 
     protected asyncLock: AsyncLock;
@@ -127,9 +133,11 @@ export class ZKillSubscriber {
         this.subscriptions = new Map<string, SubscriptionGuild>();
         this.systems = new Map<number, SolarSystem>();
         this.ships = new Map<number, number>();
+        this.names = new Map<number, string>();
         this.loadConfig();
         this.loadSystems();
         this.loadShips();
+        this.loadNames();
 
         this.doClient = client;
         this.rest = new REST({version: '9'}).setToken(process.env.DISCORD_BOT_TOKEN || '');
@@ -195,9 +203,14 @@ export class ZKillSubscriber {
                 return;
             }
             if (hasLimitType(subscription, LimitType.SHIP_INCLUSION_TYPE_ID)) {
+                let nameFragment = '';
+                if (hasLimitType(subscription, LimitType.NAME_FRAGMENT)) {
+                    nameFragment = <string>getLimitType(subscription, LimitType.NAME_FRAGMENT);
+                }
                 const __ret = await this.sendIfAnyShipsMatchLimitFilter(
                     data,
                     <string>getLimitType(subscription, LimitType.SHIP_INCLUSION_TYPE_ID),
+                    nameFragment,
                     subscription.inclusionLimitAlsoComparesAttacker,
                     subscription.inclusionLimitAlsoComparesAttackerWeapons,
                 );
@@ -310,20 +323,33 @@ export class ZKillSubscriber {
     private async sendIfAnyShipsMatchLimitFilter(
         data: any,
         limitIds: string,
+        nameFragment: string,
         alsoCompareAttackers: boolean,
         alsoCompareAttackerWeapons: boolean
     ) {
         let color: ColorResolvable = 'GREEN';
         let requireSend = false;
         let groupId: number | string | null = null;
+        const shouldCheckNameFragment = nameFragment != null && nameFragment != '';
 
         const limitShipIds = limitIds?.split(',') || [];
+        let victimShipNameByTypeId = '';
         for (const permittedShipId of limitShipIds) {
             const permittedShipGroupId = await this.getGroupIdForEntityId(Number(permittedShipId));
 
             // Determine if the victim has a matching ship type.
             if (data.victim.ship_type_id != null) {
                 groupId = await this.getGroupIdForEntityId(data.victim.ship_type_id);
+                if (shouldCheckNameFragment) {
+                    victimShipNameByTypeId = await this.getNameForEntityId(data.victim.ship_type_id);
+                    if (victimShipNameByTypeId.includes(nameFragment)) {
+                        console.log('victim ship name: ' + victimShipNameByTypeId);
+                        requireSend = true;
+                    } else {
+                        console.log('victim ship name: ' + victimShipNameByTypeId + ' does not contain ' + nameFragment);
+                        continue;
+                    }
+                }
             } else if (!alsoCompareAttackers) {
                 break;
             }
@@ -333,11 +359,23 @@ export class ZKillSubscriber {
             }
 
             // Victim is not permitted ship type. Check attackers for any matching.
+            let attackerShipNameByTypeId = '';
             if (!requireSend && alsoCompareAttackers) {
                 for (const attacker of data.attackers) {
                     if (attacker.ship_type_id) {
                         groupId = await this.getGroupIdForEntityId(attacker.ship_type_id);
                         if (groupId === permittedShipGroupId) {
+                            if (shouldCheckNameFragment) {
+                                attackerShipNameByTypeId = await this.getNameForEntityId(attacker.ship_type_id);
+                                if (attackerShipNameByTypeId.includes(nameFragment)) {
+                                    console.log('attacker ship name: ' + attackerShipNameByTypeId);
+                                    requireSend = true;
+                                    break;
+                                } else {
+                                    console.log('attacker ship name: ' + attackerShipNameByTypeId + ' does not contain ' + nameFragment);
+                                    continue;
+                                }
+                            }
                             console.log('attacker ship groupID: ' + groupId);
                             requireSend = true;
                             break;
@@ -346,6 +384,17 @@ export class ZKillSubscriber {
                     if (alsoCompareAttackerWeapons && attacker.weapon_type_id) {
                         groupId = await this.getGroupIdForEntityId(attacker.weapon_type_id);
                         if (groupId === permittedShipGroupId) {
+                            if (shouldCheckNameFragment) {
+                                attackerShipNameByTypeId = await this.getNameForEntityId(attacker.weapon_type_id);
+                                if (attackerShipNameByTypeId.includes(nameFragment)) {
+                                    console.log('attacker weapon name: ' + attackerShipNameByTypeId);
+                                    requireSend = true;
+                                    break;
+                                } else {
+                                    console.log('attacker weapon name: ' + attackerShipNameByTypeId + ' does not contain ' + nameFragment);
+                                    continue;
+                                }
+                            }
                             console.log('attacker weapon groupId: ' + groupId);
                             requireSend = true;
                             break;
@@ -626,6 +675,22 @@ export class ZKillSubscriber {
         });
     }
 
+    private async getNameForEntityId(shipId: number): Promise<string> {
+        return await this.asyncLock.acquire('fetchName', async (done) => {
+
+            let name = this.names.get(shipId);
+            if (name) {
+                done(undefined, name);
+                return;
+            }
+            name = await this.esiClient.getTypeName(shipId);
+            this.names.set(shipId, name);
+            fs.writeFileSync('./config/names.json', JSON.stringify(Object.fromEntries(this.names)), 'utf8');
+
+            done(undefined, name);
+        });
+    }
+
     private loadSystems() {
         if (fs.existsSync('./config/systems.json')) {
             const fileContent = fs.readFileSync('./config/systems.json', 'utf8');
@@ -642,6 +707,16 @@ export class ZKillSubscriber {
             const data = JSON.parse(fileContent);
             for (const key in data) {
                 this.ships.set(Number.parseInt(key), data[key]);
+            }
+        }
+    }
+
+    private loadNames() {
+        if (fs.existsSync('./config/names.json')) {
+            const fileContent = fs.readFileSync('./config/names.json', 'utf8');
+            const data = JSON.parse(fileContent);
+            for (const key in data) {
+                this.names.set(Number.parseInt(key), data[key]);
             }
         }
     }
