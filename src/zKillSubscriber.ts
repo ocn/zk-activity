@@ -346,7 +346,7 @@ export class ZKillSubscriber {
                         console.log('victim ship name: ' + victimShipNameByTypeId);
                         requireSend = true;
                     } else {
-                        console.log('victim ship name: ' + victimShipNameByTypeId + ' does not contain ' + nameFragment);
+                        // console.log('victim ship name: ' + victimShipNameByTypeId + ' does not contain ' + nameFragment);
                         continue;
                     }
                 }
@@ -372,7 +372,7 @@ export class ZKillSubscriber {
                                     requireSend = true;
                                     break;
                                 } else {
-                                    console.log('attacker ship name: ' + attackerShipNameByTypeId + ' does not contain ' + nameFragment);
+                                    // console.log('attacker ship name: ' + attackerShipNameByTypeId + ' does not contain ' + nameFragment);
                                     continue;
                                 }
                             }
@@ -391,7 +391,7 @@ export class ZKillSubscriber {
                                     requireSend = true;
                                     break;
                                 } else {
-                                    console.log('attacker weapon name: ' + attackerShipNameByTypeId + ' does not contain ' + nameFragment);
+                                    // console.log('attacker weapon name: ' + attackerShipNameByTypeId + ' does not contain ' + nameFragment);
                                     continue;
                                 }
                             }
@@ -694,9 +694,13 @@ export class ZKillSubscriber {
     private loadSystems() {
         if (fs.existsSync('./config/systems.json')) {
             const fileContent = fs.readFileSync('./config/systems.json', 'utf8');
-            const data = JSON.parse(fileContent);
-            for (const key in data) {
-                this.systems.set(Number.parseInt(key), data[key] as SolarSystem);
+            try {
+                const data = JSON.parse(fileContent);
+                for (const key in data) {
+                    this.systems.set(Number.parseInt(key), data[key] as SolarSystem);
+                }
+            } catch (e) {
+                console.log("failed to parse systems.json");
             }
         }
     }
@@ -704,9 +708,13 @@ export class ZKillSubscriber {
     private loadShips() {
         if (fs.existsSync('./config/ships.json')) {
             const fileContent = fs.readFileSync('./config/ships.json', 'utf8');
-            const data = JSON.parse(fileContent);
-            for (const key in data) {
-                this.ships.set(Number.parseInt(key), data[key]);
+            try {
+                const data = JSON.parse(fileContent);
+                for (const key in data) {
+                    this.ships.set(Number.parseInt(key), data[key]);
+                }
+            } catch (e) {
+                console.log("failed to parse ships.json");
             }
         }
     }
@@ -714,9 +722,13 @@ export class ZKillSubscriber {
     private loadNames() {
         if (fs.existsSync('./config/names.json')) {
             const fileContent = fs.readFileSync('./config/names.json', 'utf8');
-            const data = JSON.parse(fileContent);
-            for (const key in data) {
-                this.names.set(Number.parseInt(key), data[key]);
+            try {
+                const data = JSON.parse(fileContent);
+                for (const key in data) {
+                    this.names.set(Number.parseInt(key), data[key]);
+                }
+            } catch (e) {
+                console.log("failed to parse names.json");
             }
         }
     }
