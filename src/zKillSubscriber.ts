@@ -26,6 +26,9 @@ export enum LimitType {
     SHIP_EXCLUSION_TYPE_ID = 'excludedType',
     SECURITY_MAX = 'securityMax',
     SECURITY_MIN = 'securityMin',
+    ALLIANCE = 'alliance',
+    CORPORATION = 'corporation',
+    CHARACTER = 'character',
     // A partial name of the entity type to require for sending
     NAME_FRAGMENT = 'nameFragment',
 }
@@ -232,6 +235,57 @@ export class ZKillSubscriber {
                 if (minimumSecurityStatus > systemData.securityStatus) {
                     console.log(`limiting kill due to minimum security status filter: ${systemData.securityStatus} < ${minimumSecurityStatus}`);
                     return;
+                }
+            }
+            if (hasLimitType(subscription, LimitType.CHARACTER)) {
+                const characterIds = <string>getLimitType(subscription, LimitType.CHARACTER);
+                for (const characterId of characterIds.split(',')) {
+                    if (data.victim.character_id === Number(characterId)) {
+                        requireSend = true;
+                        color = 'RED';
+                    }
+                    if (!requireSend) {
+                        for (const attacker of data.attackers) {
+                            if (attacker.character_id === Number(characterId)) {
+                                requireSend = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (hasLimitType(subscription, LimitType.CORPORATION)) {
+                const corporationIds = <string>getLimitType(subscription, LimitType.CORPORATION);
+                for (const corporationId of corporationIds.split(',')) {
+                    if (data.victim.corporation_id === Number(corporationId)) {
+                        requireSend = true;
+                        color = 'RED';
+                    }
+                    if (!requireSend) {
+                        for (const attacker of data.attackers) {
+                            if (attacker.corporation_id === Number(corporationId)) {
+                                requireSend = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (hasLimitType(subscription, LimitType.ALLIANCE)) {
+                const allianceIds = <string>getLimitType(subscription, LimitType.ALLIANCE);
+                for (const allianceId of allianceIds.split(',')) {
+                    if (data.victim.alliance_id === Number(allianceId)) {
+                        requireSend = true;
+                        color = 'RED';
+                    }
+                    if (!requireSend) {
+                        for (const attacker of data.attackers) {
+                            if (attacker.alliance_id === Number(allianceId)) {
+                                requireSend = true;
+                                break;
+                            }
+                        }
+                    }
                 }
             }
             if (hasLimitType(subscription, LimitType.REGION) ||
@@ -700,7 +754,7 @@ export class ZKillSubscriber {
                     this.systems.set(Number.parseInt(key), data[key] as SolarSystem);
                 }
             } catch (e) {
-                console.log("failed to parse systems.json");
+                console.log('failed to parse systems.json');
             }
         }
     }
@@ -714,7 +768,7 @@ export class ZKillSubscriber {
                     this.ships.set(Number.parseInt(key), data[key]);
                 }
             } catch (e) {
-                console.log("failed to parse ships.json");
+                console.log('failed to parse ships.json');
             }
         }
     }
@@ -728,7 +782,7 @@ export class ZKillSubscriber {
                     this.names.set(Number.parseInt(key), data[key]);
                 }
             } catch (e) {
-                console.log("failed to parse names.json");
+                console.log('failed to parse names.json');
             }
         }
     }
