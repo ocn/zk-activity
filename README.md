@@ -1,28 +1,28 @@
-# killbot
-Posts EvE-Online Killmails von zkillboard.com to a discord channel using the zkillboard webhook endpoint and discord.js
+# zk-activity
+Post EVE Online killmails from zkillboard.com to a discord channel. Options apply a variety of filters for incoming mails.
 
-The bot was forked from [hazardous](https://github.com/SvenBrnn/hazardous-killbot)
+The bot was forked from [hazardous](https://github.com/SvenBrnn/hazardous-killbot).
 
 ## Commands
 
 | key                                              | description                                                                                      |
 |--------------------------------------------------|--------------------------------------------------------------------------------------------------|
-| /zkill-subscribe corporation [id] ([min-vaue])   | Make bot post kills of corporation with id [id] ([min-value] is optional minimal amout of isk)   |
-| /zkill-subscribe alliance [id] ([min-vaue])      | Make bot post kills of alliance with id [id] ([min-value] is optional minimal amout of isk)      |
-| /zkill-subscribe character [id] ([min-vaue])     | Make bot post kills of character with id [id] ([min-value] is optional minimal amout of isk)     |
-| /zkill-subscribe region [id] ([min-vaue])        | Make bot post kills of region with id [id] ([min-value] is optional minimal amout of isk)        |
-| /zkill-subscribe constellation [id] ([min-vaue]) | Make bot post kills of constellation with id [id] ([min-value] is optional minimal amout of isk) |
-| /zkill-subscribe system [id] ([min-vaue])        | Make bot post kills of system with id [id] ([min-value] is optional minimal amout of isk)        |
-| /zkill-subscribe group [id] ([min-vaue])         | Make bot post kills of ship group with id [id] ([min-value] is optional minimal amout of isk)    |
-| /zkill-subscribe public ([min-vaue])             | Make bot post kills the public feed ([min-value] is optional minimal amout of isk)               |
-| /zkill-unsubscribe corporation [id]              | Make the bot not post any kills for corporation [id] anymore                                     |
-| /zkill-unsubscribe alliance [id]                 | Make the bot not post any kills for alliance [id] anymore                                        |
-| /zkill-unsubscribe corporation [id]              | Make the bot not post any kills for character [id] anymore                                       |
-| /zkill-unsubscribe region [id]                   | Make the bot not post any kills for region [id] anymore                                          |
-| /zkill-unsubscribe constellation [id]            | Make the bot not post any kills for constellation [id] anymore                                   |
-| /zkill-unsubscribe system [id]                   | Make the bot not post any kills for system [id] anymore                                          |
-| /zkill-unsubscribe group [id]                    | Make the bot not post any kills for ship group [id] anymore                                      |
-| /zkill-unsubscribe public                        | Make the bot not post any kills of the public feed anymore                                       |
+| /zkill-subscribe public [id]                     | Subscribe to the public feed with various filtering options. Parameters:                         |
+|                                                  | - `id`: ID for public feed (required)                                                             |
+|                                                  | - `min_value`: Minimum ISK to show the entry (optional)                                           |
+|                                                  | - `limit_included_ship_ids`: Limit to certain ship IDs (comma-separated, optional)               |
+|                                                  | - `limit_excluded_ship_ids`: Exclude certain ship IDs (comma-separated, optional)                |
+|                                                  | - `limit_character_ids`: Limit to certain character IDs (comma-separated, optional)              |
+|                                                  | - `limit_corporation_ids`: Limit to certain corporation IDs (comma-separated, optional)          |
+|                                                  | - `limit_alliance_ids`: Limit to certain alliance IDs (comma-separated, optional)                |
+|                                                  | - `limit_region_ids`: Limit to certain region IDs (comma-separated, optional)                    |
+|                                                  | - `limit_security_max`: Limit to a maximum security (optional)                                   |
+|                                                  | - `limit_security_min`: Limit to a minimum security (optional)                                   |
+|                                                  | - `required_name_fragment`: Require a name fragment in the name of the matched type IDs (optional) |
+|                                                  | - `inclusion_limit_compares_attackers`: Consider attackers when sending mails (optional)         |
+|                                                  | - `inclusion_limit_compares_attacker_weapons`: Consider attackers' weapons when sending mails (optional) |
+|                                                  | - `exclusion_limit_compares_attackers`: Consider attackers when rejecting mails (optional)       |
+|                                                  | - `exclusion_limit_compares_attacker_weapons`: Consider attackers' weapons when rejecting mails (optional) |
 | /zkill-unsubscribe all                           | Make the bot not post any on this channel anymore                                                |
 
 Where to find the id?
@@ -30,27 +30,24 @@ Where to find the id?
 
 Open your corp/char/alliance page on zkillboard and copy the number at the end of the link.
 
-## Develop
+
+## Development
+
+Written in Typescript. Uses the zkillboard webhook endpoint and discord.js.
 
 ### Requirements:
 
 - docker
 - docker-compose
 
+### Start up:
 
-### Startup (dev):
+- Copy the env.sample to `.env` and fill out params
+- Run `docker-compose up -d`
 
-- run `copy the env.sample to .env and fill out params`
-- run `docker-compose up`
-
-### Startup (prod):
+### Build:
  
-- run `copy the env.sample to .env and fill out params`
-- run `docker-compose -f ./docker-compose.prod.yaml up`
-
-### Build (prod):
- 
-- run `cd src && docker-compose -f ./docker-compose.prod.yaml build`
+- run `docker build -t zk-activity:latest`
 
 ### Config:
 
