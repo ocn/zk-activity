@@ -1,15 +1,16 @@
 version: '3.6'
 services:
   discordbot:
+    image: ocn-killbot:latest
+    restart: unless-stopped
     build:
-      context: docker/nodejs/docker-dev
+      context: .
       dockerfile: Dockerfile
-    image: nodejs-dev:16-alpine
     environment:
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
     volumes:
-      - ./src:/usr/src/app:delegated
+      - ./config:/workspace/dist/config:delegated
 
 networks:
   default:
