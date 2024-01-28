@@ -253,6 +253,7 @@ export class ZKillSubscriber {
                         }
                     }
                 }
+                if (!requireSend) return;
             }
             if (hasLimitType(subscription, LimitType.CORPORATION)) {
                 const corporationIds = <string>getLimitType(subscription, LimitType.CORPORATION);
@@ -270,6 +271,7 @@ export class ZKillSubscriber {
                         }
                     }
                 }
+                if (!requireSend) return;
             }
             if (hasLimitType(subscription, LimitType.ALLIANCE)) {
                 const allianceIds = <string>getLimitType(subscription, LimitType.ALLIANCE);
@@ -287,6 +289,7 @@ export class ZKillSubscriber {
                         }
                     }
                 }
+                if (!requireSend) return;
             }
             if (hasLimitType(subscription, LimitType.REGION) ||
                 hasLimitType(subscription, LimitType.CONSTELLATION) ||
