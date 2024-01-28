@@ -15,6 +15,9 @@ export class SubscribeCommand extends AbstractCommand {
     protected LIMIT_EXCLUDED_SHIP_IDS = 'limit-excluded-ship-ids';
     protected LIMIT_SECURITY_MAX = 'limit-security-max';
     protected LIMIT_SECURITY_MIN = 'limit-security-min';
+    protected LIMIT_ALLIANCE_IDS = 'limit-alliance-ids';
+    protected LIMIT_CORPORATION_IDS = 'limit-corporation-ids';
+    protected LIMIT_CHARACTER_IDS = 'limit-character-ids';
     protected INCLUSION_LIMIT_COMPARES_ATTACKERS = 'in-limit-compares-attackers';
     protected INCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS = 'in-limit-compares-attacker-weps';
     protected EXCLUSION_LIMIT_COMPARES_ATTACKERS = 'ex-limit-compares-attackers';
@@ -31,6 +34,9 @@ export class SubscribeCommand extends AbstractCommand {
         const subCommand = interaction.options.getSubcommand(true) as SubscriptionType;
         const id = interaction.options.getNumber(this.ID, true);
         const minValue = interaction.options.getNumber(this.MIN_VALUE);
+        const limitCharacter = interaction.options.getString(this.LIMIT_CHARACTER_IDS);
+        const limitCorporation = interaction.options.getString(this.LIMIT_CORPORATION_IDS);
+        const limitAlliance = interaction.options.getString(this.LIMIT_ALLIANCE_IDS);
         const limitRegion = interaction.options.getString(this.LIMIT_REGION_IDS);
         const limitConstellation = interaction.options.getString(this.LIMIT_CONSTELLATION_IDS);
         const limitSystem = interaction.options.getString(this.LIMIT_SYSTEM_IDS);
@@ -57,6 +63,18 @@ export class SubscribeCommand extends AbstractCommand {
         }
         let reply = 'We subscribed to zkillboard channel: ' + interaction.options.getSubcommand();
         const limitTypes = new Map<LimitType, string>();
+        if (limitAlliance) {
+            limitTypes.set(LimitType.ALLIANCE, limitAlliance);
+            reply += '\nAlliance filter: + ' + limitAlliance;
+        }
+        if (limitCorporation) {
+            limitTypes.set(LimitType.CORPORATION, limitCorporation);
+            reply += '\nCorporation filter: + ' + limitCorporation;
+        }
+        if (limitCharacter) {
+            limitTypes.set(LimitType.CHARACTER, limitCharacter);
+            reply += '\nCharacter filter: + ' + limitCharacter;
+        }
         if (limitRegion) {
             limitTypes.set(LimitType.REGION, limitRegion);
             reply += '\nRegion filter: + ' + limitRegion;
@@ -118,88 +136,6 @@ export class SubscribeCommand extends AbstractCommand {
             .setDescription('Subscribe to zkill');
 
 
-        slashCommand.addSubcommand(new SlashCommandSubcommandBuilder().setName('corporation')
-            .setDescription('Subscribe corporation to channel')
-            .addNumberOption(option =>
-                option.setName(this.ID)
-                    .setDescription('ID for the corporation')
-                    .setRequired(true)
-            )
-            .addStringOption(option =>
-                option.setName('limit-region-ids')
-                    .setDescription('Limit to region id, comma seperated ids')
-                    .setRequired(false)
-            )
-            .addStringOption(option =>
-                option.setName('limit-constellation-ids')
-                    .setDescription('Limit to constellation id, comma seperated ids')
-                    .setRequired(false)
-            )
-            .addStringOption(option =>
-                option.setName('limit-system-ids')
-                    .setDescription('Limit to system id, comma seperated ids')
-                    .setRequired(false)
-            )
-            .addNumberOption(option =>
-                option.setName('min-value')
-                    .setDescription('Minimum isk to show the entry')
-                    .setRequired(false)
-            ));
-
-        slashCommand.addSubcommand(new SlashCommandSubcommandBuilder().setName('alliance')
-            .setDescription('Subscribe alliance to channel')
-            .addNumberOption(option =>
-                option.setName(this.ID)
-                    .setDescription('ID for the alliance')
-                    .setRequired(true)
-            )
-            .addStringOption(option =>
-                option.setName('limit-region-ids')
-                    .setDescription('Limit to region id, comma seperated ids')
-                    .setRequired(false)
-            )
-            .addStringOption(option =>
-                option.setName('limit-constellation-ids')
-                    .setDescription('Limit to constellation id, comma seperated ids')
-                    .setRequired(false)
-            )
-            .addStringOption(option =>
-                option.setName('limit-system-ids')
-                    .setDescription('Limit to system id, comma seperated ids')
-                    .setRequired(false)
-            )
-            .addNumberOption(option =>
-                option.setName('min-value')
-                    .setDescription('Minimum isk to show the entry')
-                    .setRequired(false)
-            ));
-
-        slashCommand.addSubcommand(new SlashCommandSubcommandBuilder().setName('character')
-            .setDescription('Subscribe character to channel')
-            .addNumberOption(option =>
-                option.setName(this.ID)
-                    .setDescription('ID for the character')
-                    .setRequired(true)
-            )
-            .addNumberOption(option =>
-                option.setName('min-value')
-                    .setDescription('Minimum isk to show the entry')
-                    .setRequired(false)
-            ));
-
-        slashCommand.addSubcommand(new SlashCommandSubcommandBuilder().setName('group')
-            .setDescription('Subscribe group to channel')
-            .addNumberOption(option =>
-                option.setName(this.ID)
-                    .setDescription('ID for the group')
-                    .setRequired(true)
-            )
-            .addNumberOption(option =>
-                option.setName('min-value')
-                    .setDescription('Minimum isk to show the entry')
-                    .setRequired(false)
-            ));
-
         slashCommand.addSubcommand(new SlashCommandSubcommandBuilder().setName('public')
             .addNumberOption(option =>
                 option.setName(this.ID)
@@ -219,6 +155,21 @@ export class SubscribeCommand extends AbstractCommand {
             .addStringOption(option =>
                 option.setName(this.LIMIT_EXCLUDED_SHIP_IDS)
                     .setDescription('Limit to ship id, comma seperated ids')
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName(this.LIMIT_CHARACTER_IDS)
+                    .setDescription('Limit to character id, comma seperated ids')
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName(this.LIMIT_CORPORATION_IDS)
+                    .setDescription('Limit to corporation id, comma seperated ids')
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName(this.LIMIT_ALLIANCE_IDS)
+                    .setDescription('Limit to alliance id, comma seperated ids')
                     .setRequired(false)
             )
             .addStringOption(option =>
