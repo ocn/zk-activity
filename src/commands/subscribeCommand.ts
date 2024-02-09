@@ -8,6 +8,7 @@ export class SubscribeCommand extends AbstractCommand {
 
     protected ID = 'id';
     protected MIN_VALUE = 'min-value';
+    protected MIN_NUM_INVOLVED = 'min-num-involved';
     protected LIMIT_REGION_IDS = 'limit-region-ids';
     protected LIMIT_CONSTELLATION_IDS = 'limit-constellation-ids';
     protected LIMIT_SYSTEM_IDS = 'limit-system-ids';
@@ -18,6 +19,8 @@ export class SubscribeCommand extends AbstractCommand {
     protected LIMIT_ALLIANCE_IDS = 'limit-alliance-ids';
     protected LIMIT_CORPORATION_IDS = 'limit-corporation-ids';
     protected LIMIT_CHARACTER_IDS = 'limit-character-ids';
+    protected LIMIT_TIME_RANGE_START = 'limit-time-range-start';
+    protected LIMIT_TIME_RANGE_END = 'limit-time-range-end';
     protected INCLUSION_LIMIT_COMPARES_ATTACKERS = 'in-limit-compares-attackers';
     protected INCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS = 'in-limit-compares-attacker-weps';
     protected EXCLUSION_LIMIT_COMPARES_ATTACKERS = 'ex-limit-compares-attackers';
@@ -34,6 +37,7 @@ export class SubscribeCommand extends AbstractCommand {
         const subCommand = interaction.options.getSubcommand(true) as SubscriptionType;
         const id = interaction.options.getNumber(this.ID, true);
         const minValue = interaction.options.getNumber(this.MIN_VALUE);
+        const minNumInvolved = interaction.options.getNumber(this.MIN_NUM_INVOLVED);
         const limitCharacter = interaction.options.getString(this.LIMIT_CHARACTER_IDS);
         const limitCorporation = interaction.options.getString(this.LIMIT_CORPORATION_IDS);
         const limitAlliance = interaction.options.getString(this.LIMIT_ALLIANCE_IDS);
@@ -44,6 +48,8 @@ export class SubscribeCommand extends AbstractCommand {
         const limitShipsExcluded = interaction.options.getString(this.LIMIT_EXCLUDED_SHIP_IDS);
         const limitSecurityMax = interaction.options.getString(this.LIMIT_SECURITY_MAX);
         const limitSecurityMin = interaction.options.getString(this.LIMIT_SECURITY_MIN);
+        const timeRangeStart = interaction.options.getString(this.LIMIT_TIME_RANGE_START);
+        const timeRangeEnd = interaction.options.getString(this.LIMIT_TIME_RANGE_END);
         let requiredNameFragment = interaction.options.getString(this.REQUIRED_NAME_FRAGMENT);
         let inclusionLimitComparesAttackers = interaction.options.getBoolean(this.INCLUSION_LIMIT_COMPARES_ATTACKERS);
         let inclusionLimitComparesAttackerWeapons = interaction.options.getBoolean(this.INCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS);
@@ -102,6 +108,18 @@ export class SubscribeCommand extends AbstractCommand {
         if (limitSecurityMin) {
             limitTypes.set(LimitType.SECURITY_MIN, limitSecurityMin);
             reply += '\nMin Security filter: + ' + limitSecurityMin;
+        }
+        if (minNumInvolved) {
+            limitTypes.set(LimitType.MIN_NUM_INVOLVED, minNumInvolved.toString());
+            reply += '\nMin Num Involved: + ' + minNumInvolved;
+        }
+        if (timeRangeStart) {
+            limitTypes.set(LimitType.TIME_RANGE_START, timeRangeStart);
+            reply += '\nTime Range Start: + ' + timeRangeStart;
+        }
+        if (timeRangeEnd) {
+            limitTypes.set(LimitType.TIME_RANGE_END, timeRangeEnd);
+            reply += '\nTime Range End: + ' + timeRangeEnd;
         }
         if (requiredNameFragment) {
             limitTypes.set(LimitType.NAME_FRAGMENT, requiredNameFragment);
@@ -185,6 +203,31 @@ export class SubscribeCommand extends AbstractCommand {
             .addStringOption(option =>
                 option.setName(this.LIMIT_SECURITY_MIN)
                     .setDescription('Limit to a minimum security')
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName(this.LIMIT_CONSTELLATION_IDS)
+                    .setDescription('Limit to constellation id, comma seperated ids')
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName(this.LIMIT_SYSTEM_IDS)
+                    .setDescription('Limit to system id, comma seperated ids')
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName(this.LIMIT_TIME_RANGE_START)
+                    .setDescription('Limit to time range start, integer value between 0 - 23 hours')
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName(this.LIMIT_TIME_RANGE_END)
+                    .setDescription('Limit to time range end, integer value between 0 - 23 hours')
+                    .setRequired(false)
+            )
+            .addNumberOption(option =>
+                option.setName(this.MIN_NUM_INVOLVED)
+                    .setDescription('Minimum number of involved parties on the killmail')
                     .setRequired(false)
             )
             .addStringOption(option =>

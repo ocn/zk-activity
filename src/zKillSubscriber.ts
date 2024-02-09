@@ -31,6 +31,9 @@ export enum LimitType {
     CHARACTER = 'character',
     // A partial name of the entity type to require for sending
     NAME_FRAGMENT = 'nameFragment',
+    MIN_NUM_INVOLVED = 'minNumInvolved',
+    TIME_RANGE_START = 'startingTime',
+    TIME_RANGE_END = 'endingTime',
 }
 
 interface SubscriptionGuild {
@@ -297,6 +300,30 @@ export class ZKillSubscriber {
                 requireSend = await this.isInLocationLimit(subscription, data.solar_system_id);
                 if (!requireSend) return;
             }
+            if (hasLimitType(subscription, LimitType.MIN_NUM_INVOLVED)) {
+                const minNumInvolved = Number(<string>getLimitType(subscription, LimitType.MIN_NUM_INVOLVED));
+                const numInvolved = data.attackers.length + 1;
+                if (numInvolved < minNumInvolved) {
+                    console.log(`limiting kill due to minimum number of involved parties filter: ${numInvolved} < ${minNumInvolved}`);
+                    return;
+                }
+            }
+            if (hasLimitType(subscription, LimitType.TIME_RANGE_START)) {
+                const startTime = Number(<string>getLimitType(subscription, LimitType.TIME_RANGE_START));
+                const killmailTime = new Date(data.killmail_time);
+                if (killmailTime.getHours() < startTime) {
+                    console.log(`limiting kill due to time range start filter: ${killmailTime} < ${startTime}`);
+                    return;
+                }
+            }
+            if (hasLimitType(subscription, LimitType.TIME_RANGE_END)) {
+                const endTime = Number(<string>getLimitType(subscription, LimitType.TIME_RANGE_END));
+                const killmailTime = new Date(data.killmail_time);
+                if (killmailTime.getHours() > endTime) {
+                    console.log(`limiting kill due to time range end filter: ${killmailTime} > ${endTime}`);
+                    return;
+                }
+            }
             if (requireSend) {
                 console.log('sending public filtered kill');
                 await this.sendMessageToDiscord(
@@ -311,8 +338,7 @@ export class ZKillSubscriber {
             break;
         }
 
-        // TODO: All the below need to support ship type ID filters and security filters
-        // Or, just remove all this b/c I don't use it?
+        // TODO: Deprecate/delete
         case SubscriptionType.ALLIANCE:
             if (data.victim.alliance_id === subscription.id) {
                 requireSend = true;
@@ -790,3 +816,4 @@ export class ZKillSubscriber {
         }
     }
 }
+
