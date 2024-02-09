@@ -262,3 +262,4 @@ export class SubscribeCommand extends AbstractCommand {
     }
 
 }
+

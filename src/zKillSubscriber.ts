@@ -649,6 +649,15 @@ export class ZKillSubscriber {
         }
     }
 
+    public async listGuildChannelSubscriptions(guildId: string, channel: string) {
+        if (this.subscriptions.has(guildId)) {
+            const guild = this.subscriptions.get(guildId);
+            if (guild?.channels.has(channel)) {
+                return guild.channels.get(channel);
+            }
+        }
+    }
+
     private generateObject(object: any): any {
         const keys = Object.keys(object);
         const newObject: any = {};
