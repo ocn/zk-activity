@@ -1,21 +1,35 @@
 import {SlashCommandBuilder} from '@discordjs/builders';
 import {CommandInteraction} from 'discord.js';
+import * as util from 'util';
 import {AbstractCommand} from './abstractCommand';
 import {ZKillSubscriber} from '../zKillSubscriber';
 
 export class HelpCommand extends AbstractCommand {
     protected name = 'zk-activity-diag';
 
-    executeCommand(interaction: CommandInteraction): void {
+    async executeCommand(interaction: CommandInteraction): Promise<void> {
         const sub = ZKillSubscriber.getInstance();
         if (!interaction.inGuild()) {
             // @ts-ignore
             interaction.reply('Diagnostics is not possible in PM!');
             return;
         }
-        const content = JSON.stringify(sub.listGuildChannelSubscriptions(interaction.guildId, interaction.channelId), null, 2);
-        interaction.reply({
-            content: content,
+        const subs = await sub.listGuildChannelSubscriptions(interaction.guildId, interaction.channelId);
+
+        const subs_str = util.inspect(subs, { showHidden: false, depth: 5 } );
+        const log = [
+            'List of subscriptions for guild',
+            interaction.guildId,
+            'channel',
+            interaction.channelId,
+            'is',
+            subs_str
+        ].join(" ");
+
+        console.log(log);
+
+        await interaction.reply({
+            content: log,
             ephemeral: true
         });
     }
@@ -27,4 +41,6 @@ export class HelpCommand extends AbstractCommand {
     }
 
 }
+
+
 
