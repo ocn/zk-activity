@@ -24,6 +24,7 @@ The bot was forked from [hazardous](https://github.com/SvenBrnn/hazardous-killbo
 |                                                  | - `exclusion_limit_compares_attackers`: Consider attackers when rejecting mails (optional)       |
 |                                                  | - `exclusion_limit_compares_attacker_weapons`: Consider attackers' weapons when rejecting mails (optional) |
 | /zkill-unsubscribe all                           | Make the bot not post any on this channel anymore                                                |
+| /zk-activity-diag                                | Display the current channel's list of subscriptions                                              |
 
 Where to find the id?
 ![](./docs/id.png)
