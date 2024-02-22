@@ -11,7 +11,7 @@ export class HelpCommand extends AbstractCommand {
         const sub = ZKillSubscriber.getInstance();
         if (!interaction.inGuild()) {
             // @ts-ignore
-            interaction.reply('Diagnostics is not possible in PM!');
+            await interaction.reply('Diagnostics is not possible in PM!');
             return;
         }
         const subs = await sub.listGuildChannelSubscriptions(interaction.guildId, interaction.channelId);
@@ -24,7 +24,7 @@ export class HelpCommand extends AbstractCommand {
             interaction.channelId,
             'is',
             subs_str
-        ].join(" ");
+        ].join(' ');
 
         console.log(log);
 
