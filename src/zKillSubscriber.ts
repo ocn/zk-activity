@@ -553,7 +553,7 @@ export class ZKillSubscriber {
                         }
                         return {
                             requireSend: true,
-                            color: <ColorResolvable>'RED',
+                            color: <ColorResolvable>'GREEN',
                             matchedShipName: await this.getNameForEntityId(id),
                             matchedTypeId: id,
                         };
@@ -566,7 +566,7 @@ export class ZKillSubscriber {
                         }
                         return {
                             requireSend: true,
-                            color: <ColorResolvable>'RED',
+                            color: <ColorResolvable>'GREEN',
                             matchedShipName: await this.getNameForEntityId(id),
                             matchedTypeId: id,
                         };
@@ -577,7 +577,7 @@ export class ZKillSubscriber {
 
         return {
             requireSend: false,
-            color: <ColorResolvable>'GREEN',
+            color: <ColorResolvable>'RED',
             matchedShipName: null,
             matchedTypeId: null,
         };
@@ -799,11 +799,11 @@ export class ZKillSubscriber {
         });
         console.log('maxNameLength: ' + maxNameLength);
         const sortedEntries = Array.from(allianceCountMap.entries()).sort((a, b) => b[1] - a[1]);
+        const padding = 5;
         let othersCount = 0;
         let firstEntry = true;
         for (const [key, value] of sortedEntries) {
             if (value > 1 || firstEntry) {
-                const padding = 5;
                 const spaces = maxNameLength - key.length + padding;
                 affiliation += `${key}${' '.repeat(spaces)}x${value}\n`;
                 firstEntry = false;
@@ -812,9 +812,9 @@ export class ZKillSubscriber {
             }
         }
         if (othersCount > 0) {
-            const padding = 5;
-            const spaces = maxNameLength - 'Others'.length + padding;
-            affiliation += `...others${' '.repeat(spaces)}x${othersCount}\n`;
+            const others = '...others';
+            const spaces = maxNameLength - others.length + padding;
+            affiliation += `${others}${' '.repeat(spaces)}x${othersCount}\n`;
         }
         affiliation += '```';
         console.log('attackerDataDone');
@@ -895,7 +895,7 @@ export class ZKillSubscriber {
         return [{
             title: `\`${matchedShipName}\` activity in ${systemRegion.systemName} (${systemRegion.regionName})`,
             thumbnail: {
-                url: embedding?.result.ogImage?.url,
+                url: this.strItemRenderById(matchedShipId),
                 height: embedding?.result.ogImage?.height,
                 width: embedding?.result.ogImage?.width
             },
@@ -1274,6 +1274,14 @@ export class ZKillSubscriber {
     strRegionDotlan(regionId: number): string {
         try {
             return `http://evemaps.dotlan.net/region/${regionId.toString()}`;
+        } catch {
+            return '';
+        }
+    }
+
+    strItemRenderById(itemId: number): string {
+        try {
+            return `https://images.evetech.net/types/${itemId.toString()}/render`;
         } catch {
             return '';
         }
