@@ -10,6 +10,8 @@ export class HelpCommand extends AbstractCommand {
     async executeCommand(interaction: CommandInteraction): Promise<void> {
         const sub = ZKillSubscriber.getInstance();
         if (!interaction.inGuild()) {
+            console.log(util.inspect(interaction, { showHidden: false, depth: 5 }));
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             // @ts-ignore
             await interaction.reply('Diagnostics is not possible in PM!');
             return;
