@@ -825,8 +825,14 @@ export class ZKillSubscriber {
         console.log(systemRegion);
         killmailDetails += `System: [${systemRegion.systemName}](${this.strSystemDotlan(systemRegion.id)}) ([${systemRegion.regionName}](${this.strRegionDotlan(systemRegion.regionId)}))\n`;
         const closestCelestial = await this.getClosestCelestial(systemRegion.id, data.victim.position.x, data.victim.position.y, data.victim.position.z);
-        const distanceInKm = (closestCelestial.distance / 1000).toFixed(2);
-        killmailDetails += `Celestial: [${closestCelestial.itemName}](${this.strLocation(closestCelestial.itemId)}) (${distanceInKm} km)\n`;
+        const distance = (closestCelestial.distance / 1000);
+        let distanceInUnits;
+        if (distance > 1500000) {
+            distanceInUnits = (distance / 150000000).toFixed(2) + ' au';
+        } else {
+            distanceInUnits = distance.toFixed(2) + ' km';
+        }
+        killmailDetails += `Celestial: [${closestCelestial.itemName}](${this.strLocation(closestCelestial.itemId)}) (${distanceInUnits})\n`;
         // convert data.killmail_time into a relative time
         const killmailTime = new Date(data.killmail_time);
         const now = new Date();
