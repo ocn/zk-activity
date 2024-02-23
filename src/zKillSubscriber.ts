@@ -1,21 +1,23 @@
-import {Client, ColorResolvable, DiscordAPIError, MessageOptions, TextChannel} from 'discord.js';
+import {
+    Client,
+    ColorResolvable,
+    DiscordAPIError,
+    MessageEmbed,
+    MessageEmbedOptions,
+    MessageOptions,
+    TextChannel
+} from 'discord.js';
 import {MessageEvent, WebSocket} from 'ws';
 import {REST} from '@discordjs/rest';
 import AsyncLock from 'async-lock';
 import MemoryCache from 'memory-cache';
 import ogs from 'open-graph-scraper';
+import {APIEmbed} from 'discord-api-types/v10';
 import * as fs from 'fs';
 import {EsiClient} from './lib/esiClient';
 
 export enum SubscriptionType {
-    ALL = 'all',
     PUBLIC = 'public',
-    REGION = 'region',
-    CONSTELLATION = 'constellation',
-    SYSTEM = 'system',
-    CORPORATION = 'CORPORATION',
-    ALLIANCE = 'alliance',
-    CHARACTER = 'character',
 }
 
 export enum LimitType {
@@ -62,6 +64,85 @@ interface Subscription {
     exclusionLimitAlsoComparesAttackerWeapons: boolean
 }
 
+class Attacker {
+    alliance_id: number;
+    corporation_id: number;
+    damage_done: number;
+    final_blow: boolean;
+    security_status: number;
+    ship_type_id?: number;
+    weapon_type_id?: number;
+    character_id?: number;
+
+    constructor(
+        alliance_id: number,
+        corporation_id: number,
+        damage_done: number,
+        final_blow: boolean,
+        security_status: number,
+        weapon_type_id: number,
+        ship_type_id?: number,
+        character_id?: number
+    ) {
+        this.alliance_id = alliance_id;
+        this.corporation_id = corporation_id;
+        this.damage_done = damage_done;
+        this.final_blow = final_blow;
+        this.security_status = security_status;
+        this.weapon_type_id = weapon_type_id;
+        this.ship_type_id = ship_type_id;
+        this.character_id = character_id;
+    }
+}
+
+type Position = {
+    x: number;
+    y: number;
+    z: number;
+};
+
+type Victim = {
+    alliance_id: number;
+    corporation_id: number;
+    damage_taken: number;
+    items: VictimItem[];
+    position: Position;
+    ship_type_id?: number; // ship_type_id is now optional
+    character_id?: number; // character_id is optional and may be present instead of ship_type_id
+};
+
+type VictimItem = {
+    item_type_id: number;
+    singleton: number;
+    flag: number;
+    quantity_destroyed?: number;
+    quantity_dropped?: number;
+}
+
+type Zkb = {
+    locationID: number;
+    hash: string;
+    fittedValue: number;
+    droppedValue: number;
+    destroyedValue: number;
+    totalValue: number;
+    points: number;
+    npc: boolean;
+    solo: boolean;
+    awox: boolean;
+    esi: string;
+    url: string;
+};
+
+type ZkData = {
+    attackers: Attacker[];
+    killmail_id: number;
+    killmail_time: string;
+    solar_system_id: number;
+    victim: Victim;
+    zkb: Zkb;
+};
+
 function hasLimitType(subscription: Subscription, limitType: LimitType): boolean {
     if (subscription.limitTypes instanceof Map) {
         return subscription.limitTypes.has(limitType);
@@ -70,16 +151,6 @@ function hasLimitType(subscription: Subscription, limitType: LimitType): boolean
         console.log(`subscription.limitTypes: ${subscription.limitTypes}`);
         console.log(`subscription.limitTypes type: ${typeof subscription.limitTypes}`);
         process.exit(1);
-        // Object.keys(subscription.limitTypes).forEach(key => {
-        //     console.log(`key: ${key} limitType: ${limitType}`);
-        //     if (key === limitType) {
-        //         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        //         // @ts-ignore
-        //         console.log(`key: ${key} limitType: ${limitType} value: ${subscription.limitTypes[key]}`);
-        //         return true;
-        //     }
-        // });
-        return false;
     }
 }
 
@@ -108,8 +179,16 @@ function getLimitType(subscription: Subscription, limitType: LimitType): string 
     }
 }
 
+export interface ClosestCelestial {
+    distance: number;
+    itemId: number;
+    typeId: number;
+    itemName: string;
+}
+
 export interface SolarSystem {
     id: number;
+    systemName: string;
     regionId: number;
     regionName: string;
     constellationId: number;
@@ -140,11 +219,6 @@ export class ZKillSubscriber {
         this.systems = new Map<number, SolarSystem>();
         this.ships = new Map<number, number>();
         this.names = new Map<number, string>();
-        this.loadConfig();
-        this.loadSystems();
-        this.loadShips();
-        this.loadNames();
-
         this.doClient = client;
         this.rest = new REST({version: '9'}).setToken(process.env.DISCORD_BOT_TOKEN || '');
         ZKillSubscriber.connect(this);
@@ -172,7 +246,7 @@ export class ZKillSubscriber {
     }
 
     protected async onMessage(event: MessageEvent) {
-        const data = JSON.parse(event.data.toString());
+        const data: ZkData = JSON.parse(event.data.toString());
         this.subscriptions.forEach((guild, guildId) => {
             const log_prefix = `["${data.killmail_id}"][${new Date()}] `;
             console.log(log_prefix);
@@ -190,386 +264,659 @@ export class ZKillSubscriber {
 
     private async process_subscription(
         subscription: Subscription,
-        data: any,
+        data: ZkData,
         guildId: string,
         channelId: string,
     ) {
         let color: ColorResolvable = 'GREEN';
         let requireSend = false;
+        let matchedShipName: string | null = null;
+        let matchedShipId: number | null = null;
 
         if (subscription.minValue > data.zkb.totalValue) {
             return; // Do not send if below the min value
         }
 
-        switch (subscription.subType) {
-
-        case SubscriptionType.PUBLIC: {
-            if (subscription.limitTypes.size === 0) {
-                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data);
+        if (subscription.limitTypes.size === 0) {
+            await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data);
+            return;
+        }
+        if (hasLimitType(subscription, LimitType.SHIP_INCLUSION_TYPE_ID)) {
+            let nameFragment = '';
+            if (hasLimitType(subscription, LimitType.NAME_FRAGMENT)) {
+                nameFragment = <string>getLimitType(subscription, LimitType.NAME_FRAGMENT);
+            }
+            const __ret = await this.sendIfAnyShipsMatchLimitFilter(
+                data,
+                <string>getLimitType(subscription, LimitType.SHIP_INCLUSION_TYPE_ID),
+                nameFragment,
+                subscription.inclusionLimitAlsoComparesAttacker,
+                subscription.inclusionLimitAlsoComparesAttackerWeapons,
+            );
+            requireSend = __ret.requireSend;
+            color = __ret.color;
+            matchedShipName = __ret.matchedShipName;
+            matchedShipId = __ret.matchedTypeId;
+            if (!requireSend) return;
+        }
+        if (hasLimitType(subscription, LimitType.SECURITY_MAX)) {
+            const systemData = await this.getSystemData(data.solar_system_id);
+            const maximumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MAX));
+            if (maximumSecurityStatus <= systemData.securityStatus) {
+                console.log(`limiting kill due to maximum security status filter: ${systemData.securityStatus} >= ${maximumSecurityStatus}`);
                 return;
             }
-            if (hasLimitType(subscription, LimitType.SHIP_INCLUSION_TYPE_ID)) {
-                let nameFragment = '';
-                if (hasLimitType(subscription, LimitType.NAME_FRAGMENT)) {
-                    nameFragment = <string>getLimitType(subscription, LimitType.NAME_FRAGMENT);
-                }
-                const __ret = await this.sendIfAnyShipsMatchLimitFilter(
-                    data,
-                    <string>getLimitType(subscription, LimitType.SHIP_INCLUSION_TYPE_ID),
-                    nameFragment,
-                    subscription.inclusionLimitAlsoComparesAttacker,
-                    subscription.inclusionLimitAlsoComparesAttackerWeapons,
-                );
-                requireSend = __ret.requireSend;
-                color = __ret.color;
-                if (!requireSend) return;
-            }
-            if (hasLimitType(subscription, LimitType.SECURITY_MAX)) {
-                const systemData = await this.getSystemData(data.solar_system_id);
-                const maximumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MAX));
-                if (maximumSecurityStatus <= systemData.securityStatus) {
-                    console.log(`limiting kill due to maximum security status filter: ${systemData.securityStatus} >= ${maximumSecurityStatus}`);
-                    return;
-                }
-            }
-            if (hasLimitType(subscription, LimitType.SECURITY_MIN)) {
-                const systemData = await this.getSystemData(data.solar_system_id);
-                const minimumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MIN));
-                if (minimumSecurityStatus > systemData.securityStatus) {
-                    console.log(`limiting kill due to minimum security status filter: ${systemData.securityStatus} < ${minimumSecurityStatus}`);
-                    return;
-                }
-            }
-            if (hasLimitType(subscription, LimitType.CHARACTER)) {
-                const characterIds = <string>getLimitType(subscription, LimitType.CHARACTER);
-                for (const characterId of characterIds.split(',')) {
-                    if (data.victim.character_id === Number(characterId)) {
-                        requireSend = true;
-                        color = 'RED';
-                    }
-                    if (!requireSend) {
-                        for (const attacker of data.attackers) {
-                            if (attacker.character_id === Number(characterId)) {
-                                requireSend = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (!requireSend) return;
-            }
-            if (hasLimitType(subscription, LimitType.CORPORATION)) {
-                const corporationIds = <string>getLimitType(subscription, LimitType.CORPORATION);
-                for (const corporationId of corporationIds.split(',')) {
-                    if (data.victim.corporation_id === Number(corporationId)) {
-                        requireSend = true;
-                        color = 'RED';
-                    }
-                    if (!requireSend) {
-                        for (const attacker of data.attackers) {
-                            if (attacker.corporation_id === Number(corporationId)) {
-                                requireSend = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (!requireSend) return;
-            }
-            if (hasLimitType(subscription, LimitType.ALLIANCE)) {
-                const allianceIds = <string>getLimitType(subscription, LimitType.ALLIANCE);
-                for (const allianceId of allianceIds.split(',')) {
-                    if (data.victim.alliance_id === Number(allianceId)) {
-                        requireSend = true;
-                        color = 'RED';
-                    }
-                    if (!requireSend) {
-                        for (const attacker of data.attackers) {
-                            if (attacker.alliance_id === Number(allianceId)) {
-                                requireSend = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (!requireSend) return;
-            }
-            if (hasLimitType(subscription, LimitType.REGION) ||
-                hasLimitType(subscription, LimitType.CONSTELLATION) ||
-                hasLimitType(subscription, LimitType.SYSTEM)) {
-                requireSend = await this.isInLocationLimit(subscription, data.solar_system_id);
-                if (!requireSend) return;
-            }
-            if (hasLimitType(subscription, LimitType.MIN_NUM_INVOLVED)) {
-                const minNumInvolved = Number(<string>getLimitType(subscription, LimitType.MIN_NUM_INVOLVED));
-                const numInvolved = data.attackers.length + 1;
-                if (numInvolved < minNumInvolved) {
-                    console.log(`limiting kill due to minimum number of involved parties filter: ${numInvolved} < ${minNumInvolved}`);
-                    return;
-                }
-            }
-            if (hasLimitType(subscription, LimitType.TIME_RANGE_START)) {
-                const startTime = Number(<string>getLimitType(subscription, LimitType.TIME_RANGE_START));
-                const killmailTime = new Date(data.killmail_time);
-                if (killmailTime.getHours() < startTime) {
-                    console.log(`limiting kill due to time range start filter: ${killmailTime} < ${startTime}`);
-                    return;
-                }
-            }
-            if (hasLimitType(subscription, LimitType.TIME_RANGE_END)) {
-                const endTime = Number(<string>getLimitType(subscription, LimitType.TIME_RANGE_END));
-                const killmailTime = new Date(data.killmail_time);
-                if (killmailTime.getHours() > endTime) {
-                    console.log(`limiting kill due to time range end filter: ${killmailTime} > ${endTime}`);
-                    return;
-                }
-            }
-            if (requireSend) {
-                console.log('sending public filtered kill');
-                await this.sendMessageToDiscord(
-                    guildId,
-                    channelId,
-                    subscription.subType,
-                    data,
-                    subscription.id,
-                    color,
-                );
-            }
-            break;
         }
-
-        // TODO: Deprecate/delete
-        case SubscriptionType.ALLIANCE:
-            if (data.victim.alliance_id === subscription.id) {
-                requireSend = true;
-                color = 'RED';
+        if (hasLimitType(subscription, LimitType.SECURITY_MIN)) {
+            const systemData = await this.getSystemData(data.solar_system_id);
+            const minimumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MIN));
+            if (minimumSecurityStatus > systemData.securityStatus) {
+                console.log(`limiting kill due to minimum security status filter: ${systemData.securityStatus} < ${minimumSecurityStatus}`);
+                return;
             }
-            if (!requireSend) {
-                for (const attacker of data.attackers) {
-                    if (attacker.alliance_id === subscription.id) {
-                        requireSend = true;
-                        break;
+        }
+        if (hasLimitType(subscription, LimitType.CHARACTER)) {
+            const characterIds = <string>getLimitType(subscription, LimitType.CHARACTER);
+            for (const characterId of characterIds.split(',')) {
+                if (data.victim.character_id === Number(characterId)) {
+                    requireSend = true;
+                    color = 'RED';
+                }
+                if (!requireSend) {
+                    for (const attacker of data.attackers) {
+                        if (attacker.character_id === Number(characterId)) {
+                            requireSend = true;
+                            break;
+                        }
                     }
                 }
             }
-            if (requireSend) {
-                if (subscription.limitTypes.size !== 0 && !await this.isInLocationLimit(subscription, data.solar_system_id)) {
-                    return;
+            if (!requireSend) return;
+        }
+        if (hasLimitType(subscription, LimitType.CORPORATION)) {
+            const corporationIds = <string>getLimitType(subscription, LimitType.CORPORATION);
+            for (const corporationId of corporationIds.split(',')) {
+                if (data.victim.corporation_id === Number(corporationId)) {
+                    requireSend = true;
+                    color = 'RED';
                 }
-                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data, subscription.id, color);
-            }
-            break;
-        case SubscriptionType.CORPORATION:
-            if (data.victim.corporation_id === subscription.id) {
-                requireSend = true;
-                color = 'RED';
-            }
-            if (!requireSend) {
-                for (const attacker of data.attackers) {
-                    if (attacker.corporation_id === subscription.id) {
-                        requireSend = true;
-                        break;
+                if (!requireSend) {
+                    for (const attacker of data.attackers) {
+                        if (attacker.corporation_id === Number(corporationId)) {
+                            requireSend = true;
+                            break;
+                        }
                     }
                 }
             }
-            if (requireSend) {
-                if (subscription.limitTypes.size !== 0 && !await this.isInLocationLimit(subscription, data.solar_system_id)) {
-                    return;
+            if (!requireSend) return;
+        }
+        if (hasLimitType(subscription, LimitType.ALLIANCE)) {
+            const allianceIds = <string>getLimitType(subscription, LimitType.ALLIANCE);
+            for (const allianceId of allianceIds.split(',')) {
+                if (data.victim.alliance_id === Number(allianceId)) {
+                    requireSend = true;
+                    color = 'RED';
                 }
-                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data, subscription.id, color);
-            }
-            break;
-        case SubscriptionType.CHARACTER:
-            if (data.victim.character_id === subscription.id) {
-                requireSend = true;
-                color = 'RED';
-            }
-            if (!requireSend) {
-                for (const attacker of data.attackers) {
-                    if (attacker.character_id === subscription.id) {
-                        requireSend = true;
-                        break;
+                if (!requireSend) {
+                    for (const attacker of data.attackers) {
+                        if (attacker.alliance_id === Number(allianceId)) {
+                            requireSend = true;
+                            break;
+                        }
                     }
                 }
             }
-            if (requireSend) {
-                if (subscription.limitTypes.size !== 0 && !await this.isInLocationLimit(subscription, data.solar_system_id)) {
-                    return;
-                }
-                await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data, subscription.id, color);
+            if (!requireSend) return;
+        }
+        if (hasLimitType(subscription, LimitType.REGION) ||
+            hasLimitType(subscription, LimitType.CONSTELLATION) ||
+            hasLimitType(subscription, LimitType.SYSTEM)) {
+            requireSend = await this.isInLocationLimit(subscription, data.solar_system_id);
+            if (!requireSend) return;
+        }
+        if (hasLimitType(subscription, LimitType.MIN_NUM_INVOLVED)) {
+            const minNumInvolved = Number(<string>getLimitType(subscription, LimitType.MIN_NUM_INVOLVED));
+            const numInvolved = data.attackers.length + 1;
+            if (numInvolved < minNumInvolved) {
+                console.log(`limiting kill due to minimum number of involved parties filter: ${numInvolved} < ${minNumInvolved}`);
+                return;
             }
-            break;
-        default:
+        }
+        if (hasLimitType(subscription, LimitType.TIME_RANGE_START)) {
+            const startTime = Number(<string>getLimitType(subscription, LimitType.TIME_RANGE_START));
+            const killmailTime = new Date(data.killmail_time);
+            if (killmailTime.getHours() < startTime) {
+                console.log(`limiting kill due to time range start filter: ${killmailTime} < ${startTime}`);
+                return;
+            }
+        }
+        if (hasLimitType(subscription, LimitType.TIME_RANGE_END)) {
+            const endTime = Number(<string>getLimitType(subscription, LimitType.TIME_RANGE_END));
+            const killmailTime = new Date(data.killmail_time);
+            if (killmailTime.getHours() > endTime) {
+                console.log(`limiting kill due to time range end filter: ${killmailTime} > ${endTime}`);
+                return;
+            }
+        }
+        if (requireSend) {
+            console.log('sending filtered kill');
+            await this.sendMessageToDiscord(
+                guildId,
+                channelId,
+                subscription.subType,
+                data,
+                subscription.id,
+                matchedShipName,
+                matchedShipId,
+                color
+            );
         }
     }
 
+    // private async sendIfAnyShipsMatchLimitFilter(
+    //     data: ZkData,
+    //     limitIds: string,
+    //     nameFragment: string,
+    //     alsoCompareAttackers: boolean,
+    //     alsoCompareAttackerWeapons: boolean
+    // ) {
+    //     let color: ColorResolvable = 'GREEN';
+    //     let requireSend = false;
+    //     let groupId: number | string | null = null;
+    //     let matchedShipOrWeaponName: string | null = null;
+    //     const shouldCheckNameFragment = nameFragment != null && nameFragment != '';
+    //
+    //     const limitGroupOfShipIds = limitIds?.split(',') || [];
+    //     let victimShipNameByTypeId = '';
+    //     for (const permittedGroupOfShipIds of limitGroupOfShipIds) {
+    //         const permittedGroupOfShipId = await this.getGroupIdForEntityId(Number(permittedGroupOfShipIds));
+    //
+    //         // Determine if the victim has a matching ship type.
+    //         const shipTypeId = data.victim.ship_type_id;
+    //         if (shipTypeId != null) {
+    //             groupId = await this.getGroupIdForEntityId(shipTypeId);
+    //             if (shouldCheckNameFragment) {
+    //                 victimShipNameByTypeId = await this.getNameForEntityId(shipTypeId);
+    //                 if (victimShipNameByTypeId.includes(nameFragment)) {
+    //                     console.log('victim ship name: ' + victimShipNameByTypeId);
+    //                     matchedShipOrWeaponName = victimShipNameByTypeId;
+    //                     requireSend = true;
+    //                     break;
+    //                 } else {
+    //                     // console.log('victim ship name: ' + victimShipNameByTypeId + ' does not contain ' + nameFragment);
+    //                     continue;
+    //                 }
+    //             }
+    //         } else if (!alsoCompareAttackers) {
+    //             break;
+    //         }
+    //         if (groupId === permittedGroupOfShipId) {
+    //             requireSend = true;
+    //             color = 'RED';
+    //             break;
+    //         }
+    //
+    //         // Victim is not permitted ship type. Check attackers for any matching.
+    //         let attackerShipNameByTypeId = '';
+    //         if (!requireSend && alsoCompareAttackers) {
+    //             for (const attacker of data.attackers) {
+    //                 if (attacker.ship_type_id) {
+    //                     groupId = await this.getGroupIdForEntityId(attacker.ship_type_id);
+    //                     if (groupId === permittedGroupOfShipId) {
+    //                         if (shouldCheckNameFragment) {
+    //                             attackerShipNameByTypeId = await this.getNameForEntityId(attacker.ship_type_id);
+    //                             if (attackerShipNameByTypeId.includes(nameFragment)) {
+    //                                 console.log('attacker ship name: ' + attackerShipNameByTypeId);
+    //                                 requireSend = true;
+    //                                 break;
+    //                             } else {
+    //                                 // console.log('attacker ship name: ' + attackerShipNameByTypeId + ' does not contain ' + nameFragment);
+    //                                 continue;
+    //                             }
+    //                         }
+    //                         console.log('attacker ship groupID: ' + groupId);
+    //                         requireSend = true;
+    //                         break;
+    //                     }
+    //                 }
+    //                 if (alsoCompareAttackerWeapons && attacker.weapon_type_id) {
+    //                     groupId = await this.getGroupIdForEntityId(attacker.weapon_type_id);
+    //                     if (groupId === permittedGroupOfShipId) {
+    //                         if (shouldCheckNameFragment) {
+    //                             attackerShipNameByTypeId = await this.getNameForEntityId(attacker.weapon_type_id);
+    //                             if (attackerShipNameByTypeId.includes(nameFragment)) {
+    //                                 console.log('attacker weapon name: ' + attackerShipNameByTypeId);
+    //                                 requireSend = true;
+    //                                 break;
+    //                             } else {
+    //                                 // console.log('attacker weapon name: ' + attackerShipNameByTypeId + ' does not contain ' + nameFragment);
+    //                                 continue;
+    //                             }
+    //                         }
+    //                         console.log('attacker weapon groupId: ' + groupId);
+    //                         requireSend = true;
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //
+    //         if (requireSend) {
+    //             break;
+    //         }
+    //     }
+    //
+    //     return {requireSend, color, matched_type_id: matchedShipOrWeaponName};
+    // }
     private async sendIfAnyShipsMatchLimitFilter(
-        data: any,
+        data: ZkData,
         limitIds: string,
         nameFragment: string,
         alsoCompareAttackers: boolean,
         alsoCompareAttackerWeapons: boolean
     ) {
-        let color: ColorResolvable = 'GREEN';
-        let requireSend = false;
-        let groupId: number | string | null = null;
+        const limitGroupOfShipIds = limitIds?.split(',') || [];
         const shouldCheckNameFragment = nameFragment != null && nameFragment != '';
+        const shipTypeId = data.victim.ship_type_id;
+        if (shipTypeId == null) {
+            console.log('WARNING: shipTypeId is null');
+            return {
+                requireSend: false,
+                color: <ColorResolvable>'GREEN',
+                matchedShipName: null,
+                matchedTypeId: null,
+            };
+        }
 
-        const limitShipIds = limitIds?.split(',') || [];
-        let victimShipNameByTypeId = '';
-        for (const permittedShipId of limitShipIds) {
-            const permittedShipGroupId = await this.getGroupIdForEntityId(Number(permittedShipId));
+        for (const permittedGroupOfShipIds of limitGroupOfShipIds) {
+            const permittedGroupOfShipId = await this.getGroupIdForEntityId(Number(permittedGroupOfShipIds));
 
-            // Determine if the victim has a matching ship type.
-            if (data.victim.ship_type_id != null) {
-                groupId = await this.getGroupIdForEntityId(data.victim.ship_type_id);
-                if (shouldCheckNameFragment) {
-                    victimShipNameByTypeId = await this.getNameForEntityId(data.victim.ship_type_id);
-                    if (victimShipNameByTypeId.includes(nameFragment)) {
-                        console.log('victim ship name: ' + victimShipNameByTypeId);
-                        requireSend = true;
-                    } else {
-                        // console.log('victim ship name: ' + victimShipNameByTypeId + ' does not contain ' + nameFragment);
-                        continue;
-                    }
-                }
-            } else if (!alsoCompareAttackers) {
-                break;
-            }
-            if (groupId === permittedShipGroupId) {
-                requireSend = true;
-                color = 'RED';
+            // Check if the victim's ship matches the criteria
+            if (await this.isShipMatch(shipTypeId, permittedGroupOfShipId, shouldCheckNameFragment, nameFragment)) {
+                return {
+                    requireSend: true,
+                    color: <ColorResolvable>'RED',
+                    matchedShipName: await this.getNameForEntityId(shipTypeId),
+                    matchedTypeId: shipTypeId,
+                };
             }
 
-            // Victim is not permitted ship type. Check attackers for any matching.
-            let attackerShipNameByTypeId = '';
-            if (!requireSend && alsoCompareAttackers) {
+            // If the victim's ship doesn't match, check the attackers' ships
+            if (alsoCompareAttackers) {
                 for (const attacker of data.attackers) {
-                    if (attacker.ship_type_id) {
-                        groupId = await this.getGroupIdForEntityId(attacker.ship_type_id);
-                        if (groupId === permittedShipGroupId) {
-                            if (shouldCheckNameFragment) {
-                                attackerShipNameByTypeId = await this.getNameForEntityId(attacker.ship_type_id);
-                                if (attackerShipNameByTypeId.includes(nameFragment)) {
-                                    console.log('attacker ship name: ' + attackerShipNameByTypeId);
-                                    requireSend = true;
-                                    break;
-                                } else {
-                                    // console.log('attacker ship name: ' + attackerShipNameByTypeId + ' does not contain ' + nameFragment);
-                                    continue;
-                                }
-                            }
-                            console.log('attacker ship groupID: ' + groupId);
-                            requireSend = true;
-                            break;
+                    if (await this.isShipMatch(attacker.ship_type_id, permittedGroupOfShipId, shouldCheckNameFragment, nameFragment)) {
+                        const id = attacker.ship_type_id;
+                        if (id == null) {
+                            console.log('WARNING: attacker.ship_type_id is null but matched?');
+                            continue;
                         }
+                        return {
+                            requireSend: true,
+                            color: <ColorResolvable>'RED',
+                            matchedShipName: await this.getNameForEntityId(id),
+                            matchedTypeId: id,
+                        };
                     }
-                    if (alsoCompareAttackerWeapons && attacker.weapon_type_id) {
-                        groupId = await this.getGroupIdForEntityId(attacker.weapon_type_id);
-                        if (groupId === permittedShipGroupId) {
-                            if (shouldCheckNameFragment) {
-                                attackerShipNameByTypeId = await this.getNameForEntityId(attacker.weapon_type_id);
-                                if (attackerShipNameByTypeId.includes(nameFragment)) {
-                                    console.log('attacker weapon name: ' + attackerShipNameByTypeId);
-                                    requireSend = true;
-                                    break;
-                                } else {
-                                    // console.log('attacker weapon name: ' + attackerShipNameByTypeId + ' does not contain ' + nameFragment);
-                                    continue;
-                                }
-                            }
-                            console.log('attacker weapon groupId: ' + groupId);
-                            requireSend = true;
-                            break;
+                    if ((alsoCompareAttackerWeapons && await this.isShipMatch(attacker.weapon_type_id, permittedGroupOfShipId, shouldCheckNameFragment, nameFragment))) {
+                        const id = attacker.weapon_type_id;
+                        if (id == null) {
+                            console.log('WARNING: attacker.weapon_type_id is null but matched?');
+                            continue;
                         }
+                        return {
+                            requireSend: true,
+                            color: <ColorResolvable>'RED',
+                            matchedShipName: await this.getNameForEntityId(id),
+                            matchedTypeId: id,
+                        };
                     }
                 }
-            }
-
-            if (requireSend) {
-                break;
             }
         }
 
-        return {requireSend, color};
+        return {
+            requireSend: false,
+            color: <ColorResolvable>'GREEN',
+            matchedShipName: null,
+            matchedTypeId: null,
+        };
     }
 
-    private async sendMessageToDiscord(
+    private async isShipMatch(shipTypeId: number | undefined, permittedGroupOfShipId: number, shouldCheckNameFragment: boolean, nameFragment: string) {
+        if (shipTypeId != null) {
+            const groupId = await this.getGroupIdForEntityId(shipTypeId);
+            if (groupId === permittedGroupOfShipId) {
+                if (shouldCheckNameFragment) {
+                    const shipName = await this.getNameForEntityId(shipTypeId);
+                    return shipName.includes(nameFragment);
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public async sendMessageToDiscord(
         guildId: string,
         channelId: string,
         subType: SubscriptionType,
-        data: any,
+        data: ZkData,
         subId?: number,
+        matchedShipName: string | null = null,
+        matchedShipId: number | null = null,
         messageColor: ColorResolvable = 'GREY',
     ) {
         await this.asyncLock.acquire('sendKill', async (done) => {
-            const cache = MemoryCache.get(`${channelId}_${data.killmail_id}`);
-            // Mail was already send, prevent from sending twice
-            if (cache) {
+            const cacheKey = `${channelId}_${data.killmail_id}`;
+            if (MemoryCache.get(cacheKey)) {
+                // Mail was already sent, prevent from sending twice
                 done();
                 return;
             }
-            const c = <TextChannel>await this.doClient.channels.cache.get(channelId);
-            if (c) {
-                let embedding = null;
-                try {
-                    embedding = await ogs({url: data.zkb.url});
-                } catch (e) {
-                    // Do nothing
-                }
-                try {
-                    const content: MessageOptions = {};
-                    if (embedding?.error === false) {
-                        content.embeds = [{
-                            title: embedding?.result.ogTitle,
-                            description: embedding?.result.ogDescription,
-                            thumbnail: {
-                                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                                // @ts-ignore
-                                url: embedding?.result.ogImage?.url,
-                                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                                // @ts-ignore
-                                height: embedding?.result.ogImage?.height,
-                                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                                // @ts-ignore
-                                width: embedding?.result.ogImage?.width
-                            },
-                            url: data.zkb.url,
-                            color: messageColor
-                        }];
-                    } else {
-                        content.content = data.zkb.url;
-                    }
-                    await c.send(
-                        content
-                    );
-                    MemoryCache.put(`${channelId}_${data.killmail_id}`, 'send', 60000); // Prevent from sending again, cache it for 1 min
-                } catch (e) {
-                    if (e instanceof DiscordAPIError && e.httpStatus === 403) {
-                        try {
-                            const owner = await c.guild.fetchOwner();
-                            await owner.send(`The bot unsubscribed from channel ${c.name} on ${c.guild.name} because it was not able to write in it! Fix the permissions and subscribe again!`);
-                            console.log(`Sent message to owner of ${c.guild.name} to notify him/her about the permission problem.`);
-                        } catch (e) {
-                            console.log(e);
-                        }
-                        const subscriptionsInChannel = this.subscriptions.get(guildId)?.channels.get(channelId);
-                        if (subscriptionsInChannel) {
-                            // Unsubscribe all events from channel
-                            subscriptionsInChannel.subscriptions.forEach((subscription) => {
-                                this.unsubscribe(subscription.subType, guildId, channelId, subscription.id);
-                            });
-                        }
-                    } else {
-                        console.log(e);
-                    }
-                }
-            } else {
+
+            const channel = <TextChannel>this.doClient.channels.cache.get(channelId);
+            if (!channel) {
                 await this.unsubscribe(subType, guildId, channelId, subId);
+                done();
+                return;
+            }
+
+            const embedding = await ogs({url: data.zkb.url}).catch(() => null);
+            const content: MessageOptions = await this.prepareMessageContent(embedding, data, matchedShipName, matchedShipId, messageColor);
+
+            try {
+                await channel.send(content);
+                MemoryCache.put(cacheKey, 'send', 60000); // Prevent from sending again, cache it for 1 min
+            } catch (e) {
+                if (e instanceof DiscordAPIError && e.httpStatus === 403) {
+                    await this.handlePermissionError(channel);
+                } else {
+                    console.log(e);
+                }
             }
             done();
         });
+    }
 
+    private async prepareMessageContent(embedding: any, data: ZkData, matchedShipName: string | null, matchedShipId: number | null, messageColor: ColorResolvable): Promise<MessageOptions> {
+        if (embedding?.error === false) {
+            if (matchedShipName != null && matchedShipId != null) {
+                // Use a custom embed format that highlights the specific ship detected
+                return {
+                    embeds: await this.prepareEmbedFields(embedding, data, matchedShipName, matchedShipId, messageColor)
+                };
+            } else {
+                // Default to the standard zkill embedding
+                return {
+                    embeds: [{
+                        title: embedding?.result.ogTitle,
+                        description: embedding?.result.ogDescription,
+                        thumbnail: {
+                            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                            // @ts-ignore
+                            url: embedding?.result.ogImage?.url,
+                            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                            // @ts-ignore
+                            height: embedding?.result.ogImage?.height,
+                            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                            // @ts-ignore
+                            width: embedding?.result.ogImage?.width
+                        },
+                        url: data.zkb.url,
+                        color: messageColor,
+                    }]
+                };
+            }
+        } else {
+            return {content: data.zkb.url};
+        }
+    }
+
+    private async prepareEmbedFields(embedding: any, data: ZkData, matchedShipName: string, matchedShipId: number, messageColor: ColorResolvable): Promise<(MessageEmbed | MessageEmbedOptions | APIEmbed)[]> {
+        console.log('prepareEmbedFields');
+        const systemRegion = await this.getSystemData(data.solar_system_id);
+        let victimDetails = '';
+        let attackerDetails = '';
+        let killmailDetails = '';
+
+
+        if (data.victim.ship_type_id != null) {
+            try {
+                const victimShipName = await this.getNameForEntityId(data.victim.ship_type_id);
+                victimDetails += `Ship: [${victimShipName}](${this.strShipZk(data.victim.ship_type_id)})\n`;
+            } catch (e) {
+                console.log(e);
+            }
+        }
+        if (data.victim.character_id != null) {
+            try {
+                const victimCharacterName = await this.getNameForCharacter(data.victim.character_id);
+                victimDetails += `Pilot: [${victimCharacterName}](${this.strPilotZk(data.victim.character_id)})\n`;
+            } catch (e) {
+                console.log(e);
+            }
+        }
+        if (data.victim.corporation_id != null) {
+            try {
+                const victimCorporationName = await this.getNameForCorporation(data.victim.corporation_id);
+                victimDetails += `Corp: [${victimCorporationName}](${this.strCorpZk(data.victim.corporation_id)})\n`;
+            } catch (e) {
+                console.log(e);
+            }
+        }
+        if (data.victim.alliance_id != null) {
+            try {
+                const victimAllianceName = await this.getNameForAlliance(data.victim.alliance_id);
+                victimDetails += `Alliance: [${victimAllianceName}](${this.strAllianceZk(data.victim.alliance_id)})\n`;
+            } catch (e) {
+                console.log(e);
+            }
+        }
+        console.log('victimDataDone');
+
+
+        console.log('attackerData');
+        let lastHitAttacker = null;
+        for (const attacker of data.attackers) {
+            if (attacker.final_blow) {
+                lastHitAttacker = attacker;
+                break;
+            }
+        }
+        if (lastHitAttacker == null) {
+            console.log('No final blow attacker found, using first attacker as last hit attacker');
+            lastHitAttacker = data.attackers[0];
+        }
+        if (lastHitAttacker.ship_type_id != null) {
+            try {
+                const attackerShipName = await this.getNameForEntityId(lastHitAttacker.ship_type_id);
+                attackerDetails += `Ship: [${attackerShipName}](${this.strShipZk(lastHitAttacker.ship_type_id)})\n`;
+            } catch (e) {
+                console.log(e);
+            }
+        }
+        if (lastHitAttacker.character_id != null) {
+            try {
+                const attackerCharacterName = await this.getNameForCharacter(lastHitAttacker.character_id);
+                attackerDetails += `Pilot: [${attackerCharacterName}](${this.strPilotZk(lastHitAttacker.character_id)})\n`;
+            } catch (e) {
+                console.log(e);
+            }
+        }
+        if (lastHitAttacker.corporation_id != null) {
+            try {
+                const attackerCorporationName = await this.getNameForCorporation(lastHitAttacker.corporation_id);
+                attackerDetails += `Corp: [${attackerCorporationName}](${this.strCorpZk(lastHitAttacker.corporation_id)})\n`;
+            } catch (e) {
+                console.log(e);
+            }
+        }
+        if (lastHitAttacker.alliance_id != null) {
+            try {
+                const attackerAllianceName = await this.getNameForAlliance(lastHitAttacker.alliance_id);
+                attackerDetails += `Alliance: [${attackerAllianceName}](${this.strAllianceZk(lastHitAttacker.alliance_id)})\n`;
+            } catch (e) {
+                console.log(e);
+            }
+        }
+
+        let affiliation = '```';
+        const allianceCountMap = new Map<string, number>();
+        for (const attacker of data.attackers) {
+            const id = attacker.alliance_id ? attacker.alliance_id : attacker.corporation_id;
+            let name = '';
+            if (attacker.alliance_id) {
+                try {
+                    name = await this.getNameForAlliance(id);
+                } catch (e) {
+                    console.log(`Error getting alliance name for id ${id}: ${e}`);
+                    name = 'Unknown';
+                }
+            } else {
+                try {
+                    name = await this.getNameForCorporation(id);
+                } catch (e) {
+                    console.log(`Error getting corporation name for id ${id}: ${e}`);
+                    name = 'Unknown';
+                }
+            }
+            if (allianceCountMap.has(name)) {
+                const value = allianceCountMap.get(name);
+                if (value == null) {
+                    continue;
+                }
+                allianceCountMap.set(name, value + 1);
+            } else {
+                allianceCountMap.set(name, 1);
+            }
+        }
+        let maxNameLength = 0;
+        Array.from(allianceCountMap.keys()).forEach((name: string) => {
+            if (name.length > maxNameLength) {
+                maxNameLength = name.length;
+            }
+        });
+        console.log('maxNameLength: ' + maxNameLength);
+        const sortedEntries = Array.from(allianceCountMap.entries()).sort((a, b) => b[1] - a[1]);
+        let othersCount = 0;
+        let firstEntry = true;
+        for (const [key, value] of sortedEntries) {
+            if (value > 1 || firstEntry) {
+                const padding = 5;
+                const spaces = maxNameLength - key.length + padding;
+                affiliation += `${key}${' '.repeat(spaces)}x${value}\n`;
+                firstEntry = false;
+            } else {
+                othersCount += value;
+            }
+        }
+        if (othersCount > 0) {
+            const padding = 5;
+            const spaces = maxNameLength - 'Others'.length + padding;
+            affiliation += `...others${' '.repeat(spaces)}x${othersCount}\n`;
+        }
+        affiliation += '```';
+        console.log('attackerDataDone');
+
+
+        console.log(systemRegion);
+        killmailDetails += `System: [${systemRegion.systemName}](${this.strSystemDotlan(systemRegion.id)}) ([${systemRegion.regionName}](${this.strRegionDotlan(systemRegion.regionId)}))\n`;
+        const closestCelestial = await this.getClosestCelestial(systemRegion.id, data.victim.position.x, data.victim.position.y, data.victim.position.z);
+        const distanceInKm = (closestCelestial.distance / 1000).toFixed(2);
+        killmailDetails += `Celestial: [${closestCelestial.itemName}](${this.strLocation(closestCelestial.itemId)}) (${distanceInKm} km)\n`;
+        // convert data.killmail_time into a relative time
+        const killmailTime = new Date(data.killmail_time);
+        const now = new Date();
+        const diff = now.getTime() - killmailTime.getTime();
+        const seconds = Math.floor(diff / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+        const weeks = Math.floor(days / 7);
+        const months = Math.floor(weeks / 4);
+        const years = Math.floor(months / 12);
+        let relativeTime = '';
+        if (years > 1) {
+            relativeTime = years + ' years ago';
+        } else if (years === 1) {
+            relativeTime = '1 year ago';
+        } else if (months > 1) {
+            relativeTime = months + ' months ago';
+        } else if (months === 1) {
+            relativeTime = '1 month ago';
+        } else if (weeks > 1) {
+            relativeTime = weeks + ' weeks ago';
+        } else if (weeks === 1) {
+            relativeTime = '1 week ago';
+        } else if (days > 1) {
+            relativeTime = days + ' days ago';
+        } else if (days === 1) {
+            relativeTime = '1 day ago';
+        } else if (hours > 1) {
+            relativeTime = hours + ' hours ago';
+        } else if (hours === 1) {
+            relativeTime = '1 hour ago';
+        } else if (minutes > 1) {
+            relativeTime = minutes + ' minutes ago';
+        } else if (minutes === 1) {
+            relativeTime = '1 minute ago';
+        } else if (seconds > 1) {
+            relativeTime = seconds + ' seconds ago';
+        } else {
+            relativeTime = '1 second ago';
+        }
+        // convert the killmail_time `2023-01-17T01:53:02Z` to YYYY/MM/DD HH:MM
+        const killmailTimeFormatted = killmailTime.toISOString().replace(/T/, ' ').replace(/\..+/, '');
+
+        const fields: { inline: boolean; name: string; value: string }[] = [];
+        [
+            {
+                name: `__Attackers__ - ${data.attackers.length} `,
+                value: affiliation,
+                inline: false,
+            },
+            {
+                name: '__Victim__',
+                value: victimDetails,
+                inline: true
+            },
+            {
+                name: '__Attacker__',
+                value: attackerDetails,
+                inline: true
+            },
+            {
+                name: '__Details__',
+                value: killmailDetails,
+                inline: false
+            },
+        ].forEach((field) => fields.push(field));
+        return [{
+            title: `\`${matchedShipName}\` activity in ${systemRegion.systemName} (${systemRegion.regionName})`,
+            thumbnail: {
+                url: embedding?.result.ogImage?.url,
+                height: embedding?.result.ogImage?.height,
+                width: embedding?.result.ogImage?.width
+            },
+            url: data.zkb.url,
+            color: messageColor,
+            fields: fields,
+            footer: {
+                text: `${killmailTimeFormatted} - ${relativeTime}`
+            }
+        }];
+    }
+
+    private async handlePermissionError(channel: TextChannel) {
+        const owner = await channel.guild.fetchOwner();
+        await owner.send(`The bot unsubscribed from channel ${channel.name} on ${channel.guild.name} because it was not able to write in it! Fix the permissions and subscribe again!`);
+        const subscriptionsInChannel = this.subscriptions.get(channel.guild.id)?.channels.get(channel.id);
+        if (subscriptionsInChannel) {
+            subscriptionsInChannel.subscriptions.forEach((subscription) => {
+                this.unsubscribe(subscription.subType, channel.guild.id, channel.id, subscription.id);
+            });
+        }
     }
 
     public static getInstance(client?: Client) {
@@ -626,12 +973,6 @@ export class ZKillSubscriber {
         if (!guild?.channels.has(channel)) {
             return;
         }
-        // If unsubscribe all is triggered
-        if (subType === SubscriptionType.ALL) {
-            !guild?.channels.delete(channel);
-            fs.writeFileSync('./config/' + guildId + '.json', JSON.stringify(this.generateObject(guild)), 'utf8');
-            return;
-        }
         const guildChannel = guild.channels.get(channel);
         const ident = `${subType}${id ? id : ''}`;
         if (!guildChannel?.subscriptions.has(ident)) {
@@ -675,20 +1016,6 @@ export class ZKillSubscriber {
         return newObject;
     }
 
-    private loadConfig() {
-        const files = fs.readdirSync('./config', {withFileTypes: true});
-        for (const file of files) {
-            if (file.name.match(/\d+\.json$/)) {
-                const guildId = file.name.match(/(\d*)\.json$/);
-                if (guildId && guildId.length > 0 && guildId[0]) {
-                    const fileContent = fs.readFileSync('./config/' + file.name, 'utf8');
-                    const parsedFileContent = JSON.parse(fileContent);
-                    this.subscriptions.set(guildId[1], {channels: this.createChannelMap(parsedFileContent.channels)});
-                }
-            }
-        }
-    }
-
     private createChannelMap(object: any): Map<string, SubscriptionChannel> {
         const map = new Map<string, SubscriptionChannel>();
         const keys = Object.keys(object);
@@ -726,6 +1053,7 @@ export class ZKillSubscriber {
                 done(undefined, system);
                 return;
             }
+            console.log('found undefined system with id ' + systemId);
             system = await this.esiClient.getSystemInfo(systemId);
             this.systems.set(systemId, system);
             fs.writeFileSync('./config/systems.json', JSON.stringify(Object.fromEntries(this.systems)), 'utf8');
@@ -783,9 +1111,76 @@ export class ZKillSubscriber {
         });
     }
 
-    private loadSystems() {
-        if (fs.existsSync('./config/systems.json')) {
-            const fileContent = fs.readFileSync('./config/systems.json', 'utf8');
+    private async getNameForAlliance(allianceId: number): Promise<string> {
+        return await this.asyncLock.acquire('fetchName', async (done) => {
+
+            let name = this.names.get(allianceId);
+            if (name) {
+                done(undefined, name);
+                return;
+            }
+            name = await this.esiClient.getAllianceName(allianceId);
+            this.names.set(allianceId, name);
+            fs.writeFileSync('./config/names.json', JSON.stringify(Object.fromEntries(this.names)), 'utf8');
+
+            done(undefined, name);
+        });
+    }
+
+    private async getNameForCorporation(corporationId: number): Promise<string> {
+        return await this.asyncLock.acquire('fetchName', async (done) => {
+
+            let name = this.names.get(corporationId);
+            if (name) {
+                done(undefined, name);
+                return;
+            }
+            name = await this.esiClient.getCorporationName(corporationId);
+            this.names.set(corporationId, name);
+            fs.writeFileSync('./config/names.json', JSON.stringify(Object.fromEntries(this.names)), 'utf8');
+
+            done(undefined, name);
+        });
+    }
+
+    private async getNameForCharacter(characterId: number): Promise<string> {
+        return await this.asyncLock.acquire('fetchName', async (done) => {
+
+            let name = this.names.get(characterId);
+            if (name) {
+                done(undefined, name);
+                return;
+            }
+            name = await this.esiClient.getCharacterName(characterId);
+            this.names.set(characterId, name);
+            fs.writeFileSync('./config/names.json', JSON.stringify(Object.fromEntries(this.names)), 'utf8');
+
+            done(undefined, name);
+        });
+    }
+
+    private async getClosestCelestial(systemId: number, x: number, y: number, z: number): Promise<ClosestCelestial> {
+        return await this.esiClient.getCelestial(systemId, x, y, z);
+    }
+
+    public withConfig(base_dir = './config/'): ZKillSubscriber {
+        const files = fs.readdirSync(base_dir, {withFileTypes: true});
+        for (const file of files) {
+            if (file.name.match(/\d+\.json$/)) {
+                const guildId = file.name.match(/(\d*)\.json$/);
+                if (guildId && guildId.length > 0 && guildId[0]) {
+                    const fileContent = fs.readFileSync(base_dir + file.name, 'utf8');
+                    const parsedFileContent = JSON.parse(fileContent);
+                    this.subscriptions.set(guildId[1], {channels: this.createChannelMap(parsedFileContent.channels)});
+                }
+            }
+        }
+        return this;
+    }
+
+    public withSystems(base_dir = './config/'): ZKillSubscriber {
+        if (fs.existsSync(base_dir + 'systems.json')) {
+            const fileContent = fs.readFileSync(base_dir + 'systems.json', 'utf8');
             try {
                 const data = JSON.parse(fileContent);
                 for (const key in data) {
@@ -795,11 +1190,12 @@ export class ZKillSubscriber {
                 console.log('failed to parse systems.json');
             }
         }
+        return this;
     }
 
-    private loadShips() {
-        if (fs.existsSync('./config/ships.json')) {
-            const fileContent = fs.readFileSync('./config/ships.json', 'utf8');
+    public withShips(base_dir = './config/'): ZKillSubscriber {
+        if (fs.existsSync(base_dir + 'ships.json')) {
+            const fileContent = fs.readFileSync(base_dir + 'ships.json', 'utf8');
             try {
                 const data = JSON.parse(fileContent);
                 for (const key in data) {
@@ -809,11 +1205,12 @@ export class ZKillSubscriber {
                 console.log('failed to parse ships.json');
             }
         }
+        return this;
     }
 
-    private loadNames() {
-        if (fs.existsSync('./config/names.json')) {
-            const fileContent = fs.readFileSync('./config/names.json', 'utf8');
+    public withNames(base_dir = './config/'): ZKillSubscriber {
+        if (fs.existsSync(base_dir + 'names.json')) {
+            const fileContent = fs.readFileSync(base_dir + 'names.json', 'utf8');
             try {
                 const data = JSON.parse(fileContent);
                 for (const key in data) {
@@ -822,6 +1219,63 @@ export class ZKillSubscriber {
             } catch (e) {
                 console.log('failed to parse names.json');
             }
+        }
+        return this;
+    }
+
+    strPilotZk(characterId: number): string {
+        try {
+            return `https://zkillboard.com/character/${characterId.toString()}/`;
+        } catch {
+            return '';
+        }
+    }
+
+    strCorpZk(corporationId: number): string {
+        try {
+            return `https://zkillboard.com/corporation/${corporationId.toString()}/`;
+        } catch {
+            return '';
+        }
+    }
+
+    strAllianceZk(allianceId: number): string {
+        try {
+            return `https://zkillboard.com/alliance/${allianceId.toString()}/`;
+        } catch {
+            return '';
+        }
+    }
+
+    strShipZk(shipTypeId: number): string {
+        try {
+            return `https://zkillboard.com/ship/${shipTypeId.toString()}/`;
+        } catch {
+            return '';
+        }
+    }
+
+    strLocation(locationId: number): string {
+        try {
+            return `https://zkillboard.com/location/${locationId.toString()}/`;
+        } catch {
+            return '';
+        }
+    }
+
+    strSystemDotlan(systemId: number): string {
+        try {
+            return `http://evemaps.dotlan.net/system/${systemId.toString()}`;
+        } catch {
+            return '';
+        }
+    }
+
+    strRegionDotlan(regionId: number): string {
+        try {
+            return `http://evemaps.dotlan.net/region/${regionId.toString()}`;
+        } catch {
+            return '';
         }
     }
 }
