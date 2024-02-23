@@ -24,19 +24,20 @@ export class EsiClient {
 
     async getSystemInfo(systemId: number): Promise<SolarSystem> {
         const systemData = await this.fetch(GET_SOLAR_SYSTEM_URL.replace('%1', systemId.toString()));
-        console.log('queried for new system: ' + util.inspect(systemData.data, { showHidden: false, depth: 5 }));
         if(systemData.data.error) {
-            throw new Error('SYSTEM_FETCH_ERROR');
+            console.log('SYSTEM_FETCH_ERROR: ' + systemData.data.error);
+            throw new Error('SYSTEM_FETCH_ERROR: ' + systemData.data.error);
         }
         const constData = await this.fetch(GET_CONSTELLATION_URL.replace('%1', systemData.data.constellation_id));
         if(systemData.data.error) {
+            console.log('CONST_FETCH_ERROR: ' + systemData.data.error);
             throw new Error('CONST_FETCH_ERROR');
         }
         const regionData = await this.fetch(GET_REGION_URL.replace('%1', constData.data.region_id));
         if(systemData.data.error) {
+            console.log('REGION_FETCH_ERROR: ' + systemData.data.error);
             throw new Error('REGION_FETCH_ERROR');
         }
-
         return {
             id: systemId,
             systemName: systemData.data.name,
