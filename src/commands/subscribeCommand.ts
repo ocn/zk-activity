@@ -14,8 +14,10 @@ export class SubscribeCommand extends AbstractCommand {
     protected LIMIT_SYSTEM_IDS = 'limit-system-ids';
     protected LIMIT_INCLUDED_SHIP_IDS = 'limit-included-ship-ids';
     protected LIMIT_EXCLUDED_SHIP_IDS = 'limit-excluded-ship-ids';
-    protected LIMIT_SECURITY_MAX = 'limit-security-max';
-    protected LIMIT_SECURITY_MIN = 'limit-security-min';
+    protected LIMIT_SECURITY_MAX_INCL = 'limit-security-max-incl';
+    protected LIMIT_SECURITY_MIN_INCL = 'limit-security-min-incl';
+    protected LIMIT_SECURITY_MAX_EXCL = 'limit-security-max-excl';
+    protected LIMIT_SECURITY_MIN_EXCL = 'limit-security-min-excl';
     protected LIMIT_ALLIANCE_IDS = 'limit-alliance-ids';
     protected LIMIT_CORPORATION_IDS = 'limit-corporation-ids';
     protected LIMIT_CHARACTER_IDS = 'limit-character-ids';
@@ -30,6 +32,7 @@ export class SubscribeCommand extends AbstractCommand {
     executeCommand(interaction: CommandInteraction): void {
         const sub = ZKillSubscriber.getInstance();
         if (!interaction.inGuild()) {
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             // @ts-ignore
             interaction.reply('Subscription is not possible in PM!');
             return;
@@ -46,11 +49,13 @@ export class SubscribeCommand extends AbstractCommand {
         const limitSystem = interaction.options.getString(this.LIMIT_SYSTEM_IDS);
         const limitShipsIncluded = interaction.options.getString(this.LIMIT_INCLUDED_SHIP_IDS);
         const limitShipsExcluded = interaction.options.getString(this.LIMIT_EXCLUDED_SHIP_IDS);
-        const limitSecurityMax = interaction.options.getString(this.LIMIT_SECURITY_MAX);
-        const limitSecurityMin = interaction.options.getString(this.LIMIT_SECURITY_MIN);
+        const limitSecurityMaxExcl = interaction.options.getString(this.LIMIT_SECURITY_MAX_EXCL);
+        const limitSecurityMinExcl = interaction.options.getString(this.LIMIT_SECURITY_MIN_EXCL);
+        const limitSecurityMaxIncl = interaction.options.getString(this.LIMIT_SECURITY_MAX_INCL);
+        const limitSecurityMinIncl = interaction.options.getString(this.LIMIT_SECURITY_MIN_INCL);
         const timeRangeStart = interaction.options.getString(this.LIMIT_TIME_RANGE_START);
         const timeRangeEnd = interaction.options.getString(this.LIMIT_TIME_RANGE_END);
-        let requiredNameFragment = interaction.options.getString(this.REQUIRED_NAME_FRAGMENT);
+        const requiredNameFragment = interaction.options.getString(this.REQUIRED_NAME_FRAGMENT);
         let inclusionLimitComparesAttackers = interaction.options.getBoolean(this.INCLUSION_LIMIT_COMPARES_ATTACKERS);
         let inclusionLimitComparesAttackerWeapons = interaction.options.getBoolean(this.INCLUSION_LIMIT_COMPARES_ATTACKER_WEAPONS);
         let exclusionLimitComparesAttackers = interaction.options.getBoolean(this.EXCLUSION_LIMIT_COMPARES_ATTACKERS);
@@ -101,13 +106,21 @@ export class SubscribeCommand extends AbstractCommand {
             limitTypes.set(LimitType.SHIP_EXCLUSION_TYPE_ID, limitShipsExcluded);
             reply += '\nShip ID Exclusion filter: - ' + limitShipsExcluded;
         }
-        if (limitSecurityMax) {
-            limitTypes.set(LimitType.SECURITY_MAX, limitSecurityMax);
-            reply += '\nMax Security filter: + ' + limitSecurityMax;
+        if (limitSecurityMaxIncl) {
+            limitTypes.set(LimitType.SECURITY_MAX_INCLUSIVE, limitSecurityMaxIncl);
+            reply += '\nMax Security filter: + ' + limitSecurityMaxIncl;
         }
-        if (limitSecurityMin) {
-            limitTypes.set(LimitType.SECURITY_MIN, limitSecurityMin);
-            reply += '\nMin Security filter: + ' + limitSecurityMin;
+        if (limitSecurityMinIncl) {
+            limitTypes.set(LimitType.SECURITY_MIN_INCLUSIVE, limitSecurityMinIncl);
+            reply += '\nMin Security filter: + ' + limitSecurityMinIncl;
+        }
+        if (limitSecurityMaxExcl) {
+            limitTypes.set(LimitType.SECURITY_MAX_EXCLUSIVE, limitSecurityMaxExcl);
+            reply += '\nMax Security filter: - ' + limitSecurityMaxExcl;
+        }
+        if (limitSecurityMinExcl) {
+            limitTypes.set(LimitType.SECURITY_MIN_EXCLUSIVE, limitSecurityMinExcl);
+            reply += '\nMin Security filter: - ' + limitSecurityMinExcl;
         }
         if (minNumInvolved) {
             limitTypes.set(LimitType.MIN_NUM_INVOLVED, minNumInvolved.toString());
@@ -124,8 +137,6 @@ export class SubscribeCommand extends AbstractCommand {
         if (requiredNameFragment) {
             limitTypes.set(LimitType.NAME_FRAGMENT, requiredNameFragment);
             reply += '\nRequired name fragment: + ' + requiredNameFragment;
-        } else if (requiredNameFragment == null) {
-            requiredNameFragment = '';
         }
         sub.subscribe(
             subCommand,
@@ -196,13 +207,23 @@ export class SubscribeCommand extends AbstractCommand {
                     .setRequired(false)
             )
             .addStringOption(option =>
-                option.setName(this.LIMIT_SECURITY_MAX)
-                    .setDescription('Limit to a maximum security')
+                option.setName(this.LIMIT_SECURITY_MAX_INCL)
+                    .setDescription('Limit to a maximum security, inclusive')
                     .setRequired(false)
             )
             .addStringOption(option =>
-                option.setName(this.LIMIT_SECURITY_MIN)
-                    .setDescription('Limit to a minimum security')
+                option.setName(this.LIMIT_SECURITY_MIN_INCL)
+                    .setDescription('Limit to a minimum security, inclusive')
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName(this.LIMIT_SECURITY_MAX_EXCL)
+                    .setDescription('Limit to a maximum security, exclusive')
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName(this.LIMIT_SECURITY_MIN_EXCL)
+                    .setDescription('Limit to a minimum security, exclusive')
                     .setRequired(false)
             )
             .addStringOption(option =>

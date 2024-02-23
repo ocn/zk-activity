@@ -26,8 +26,10 @@ export enum LimitType {
     SYSTEM = 'system',
     SHIP_INCLUSION_TYPE_ID = 'type',
     SHIP_EXCLUSION_TYPE_ID = 'excludedType',
-    SECURITY_MAX = 'securityMax',
-    SECURITY_MIN = 'securityMin',
+    SECURITY_MAX_INCLUSIVE = 'securityMaxInclusive',
+    SECURITY_MIN_INCLUSIVE = 'securityMinInclusive',
+    SECURITY_MAX_EXCLUSIVE = 'securityMaxExclusive',
+    SECURITY_MIN_EXCLUSIVE = 'securityMinExclusive',
     ALLIANCE = 'alliance',
     CORPORATION = 'corporation',
     CHARACTER = 'character',
@@ -38,15 +40,15 @@ export enum LimitType {
     TIME_RANGE_END = 'endingTime',
 }
 
-interface SubscriptionGuild {
+export interface SubscriptionGuild {
     channels: Map<string, SubscriptionChannel>;
 }
 
-interface SubscriptionChannel {
+export interface SubscriptionChannel {
     subscriptions: Map<string, Subscription>;
 }
 
-interface Subscription {
+export interface Subscription {
     subType: SubscriptionType
     id?: number
     minValue: number,
@@ -64,7 +66,7 @@ interface Subscription {
     exclusionLimitAlsoComparesAttackerWeapons: boolean
 }
 
-class Attacker {
+export class Attacker {
     alliance_id: number;
     corporation_id: number;
     damage_done: number;
@@ -95,13 +97,42 @@ class Attacker {
     }
 }
 
-type Position = {
+// class UniverseMap {
+//     regions: Map<number, RegionMap>;
+// }
+//
+// class RegionMap {
+//     name: string;
+//     systems: System[];
+//     connections: Connection[];
+// }
+//
+// class System {
+//     id: number;
+//     name: string;
+//     hasStation: boolean;
+//     region: string;
+//     x: number;
+//     y: number;
+// }
+//
+// class Connection {
+//     a: number;
+//     b: number;
+//     type: 'jc';
+//     x1: string;
+//     y1: string;
+//     x2: string;
+//     y2: string;
+// }
+
+export type Position = {
     x: number;
     y: number;
     z: number;
 };
 
-type Victim = {
+export type Victim = {
     alliance_id: number;
     corporation_id: number;
     damage_taken: number;
@@ -111,7 +142,7 @@ type Victim = {
     character_id?: number; // character_id is optional and may be present instead of ship_type_id
 };
 
-type VictimItem = {
+export type VictimItem = {
     item_type_id: number;
     singleton: number;
     flag: number;
@@ -119,7 +150,7 @@ type VictimItem = {
     quantity_dropped?: number;
 }
 
-type Zkb = {
+export type Zkb = {
     locationID: number;
     hash: string;
     fittedValue: number;
@@ -134,7 +165,7 @@ type Zkb = {
     url: string;
 };
 
-type ZkData = {
+export type ZkData = {
     attackers: Attacker[];
     killmail_id: number;
     killmail_time: string;
@@ -299,21 +330,17 @@ export class ZKillSubscriber {
             matchedShipId = __ret.matchedTypeId;
             if (!requireSend) return;
         }
-        if (hasLimitType(subscription, LimitType.SECURITY_MAX)) {
-            const systemData = await this.getSystemData(data.solar_system_id);
-            const maximumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MAX));
-            if (maximumSecurityStatus <= systemData.securityStatus) {
-                console.log(`limiting kill due to maximum security status filter: ${systemData.securityStatus} >= ${maximumSecurityStatus}`);
-                return;
-            }
+        if (!await this.checkSecurityMaxExclusive(subscription, data)) {
+            return;
         }
-        if (hasLimitType(subscription, LimitType.SECURITY_MIN)) {
-            const systemData = await this.getSystemData(data.solar_system_id);
-            const minimumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MIN));
-            if (minimumSecurityStatus > systemData.securityStatus) {
-                console.log(`limiting kill due to minimum security status filter: ${systemData.securityStatus} < ${minimumSecurityStatus}`);
-                return;
-            }
+        if (!await this.checkSecurityMinExclusive(subscription, data)) {
+            return;
+        }
+        if (!await this.checkSecurityMaxInclusive(subscription, data)) {
+            return;
+        }
+        if (!await this.checkSecurityMinInclusive(subscription, data)) {
+            return;
         }
         if (hasLimitType(subscription, LimitType.CHARACTER)) {
             const characterIds = <string>getLimitType(subscription, LimitType.CHARACTER);
@@ -416,101 +443,54 @@ export class ZKillSubscriber {
         }
     }
 
-    // private async sendIfAnyShipsMatchLimitFilter(
-    //     data: ZkData,
-    //     limitIds: string,
-    //     nameFragment: string,
-    //     alsoCompareAttackers: boolean,
-    //     alsoCompareAttackerWeapons: boolean
-    // ) {
-    //     let color: ColorResolvable = 'GREEN';
-    //     let requireSend = false;
-    //     let groupId: number | string | null = null;
-    //     let matchedShipOrWeaponName: string | null = null;
-    //     const shouldCheckNameFragment = nameFragment != null && nameFragment != '';
-    //
-    //     const limitGroupOfShipIds = limitIds?.split(',') || [];
-    //     let victimShipNameByTypeId = '';
-    //     for (const permittedGroupOfShipIds of limitGroupOfShipIds) {
-    //         const permittedGroupOfShipId = await this.getGroupIdForEntityId(Number(permittedGroupOfShipIds));
-    //
-    //         // Determine if the victim has a matching ship type.
-    //         const shipTypeId = data.victim.ship_type_id;
-    //         if (shipTypeId != null) {
-    //             groupId = await this.getGroupIdForEntityId(shipTypeId);
-    //             if (shouldCheckNameFragment) {
-    //                 victimShipNameByTypeId = await this.getNameForEntityId(shipTypeId);
-    //                 if (victimShipNameByTypeId.includes(nameFragment)) {
-    //                     console.log('victim ship name: ' + victimShipNameByTypeId);
-    //                     matchedShipOrWeaponName = victimShipNameByTypeId;
-    //                     requireSend = true;
-    //                     break;
-    //                 } else {
-    //                     // console.log('victim ship name: ' + victimShipNameByTypeId + ' does not contain ' + nameFragment);
-    //                     continue;
-    //                 }
-    //             }
-    //         } else if (!alsoCompareAttackers) {
-    //             break;
-    //         }
-    //         if (groupId === permittedGroupOfShipId) {
-    //             requireSend = true;
-    //             color = 'RED';
-    //             break;
-    //         }
-    //
-    //         // Victim is not permitted ship type. Check attackers for any matching.
-    //         let attackerShipNameByTypeId = '';
-    //         if (!requireSend && alsoCompareAttackers) {
-    //             for (const attacker of data.attackers) {
-    //                 if (attacker.ship_type_id) {
-    //                     groupId = await this.getGroupIdForEntityId(attacker.ship_type_id);
-    //                     if (groupId === permittedGroupOfShipId) {
-    //                         if (shouldCheckNameFragment) {
-    //                             attackerShipNameByTypeId = await this.getNameForEntityId(attacker.ship_type_id);
-    //                             if (attackerShipNameByTypeId.includes(nameFragment)) {
-    //                                 console.log('attacker ship name: ' + attackerShipNameByTypeId);
-    //                                 requireSend = true;
-    //                                 break;
-    //                             } else {
-    //                                 // console.log('attacker ship name: ' + attackerShipNameByTypeId + ' does not contain ' + nameFragment);
-    //                                 continue;
-    //                             }
-    //                         }
-    //                         console.log('attacker ship groupID: ' + groupId);
-    //                         requireSend = true;
-    //                         break;
-    //                     }
-    //                 }
-    //                 if (alsoCompareAttackerWeapons && attacker.weapon_type_id) {
-    //                     groupId = await this.getGroupIdForEntityId(attacker.weapon_type_id);
-    //                     if (groupId === permittedGroupOfShipId) {
-    //                         if (shouldCheckNameFragment) {
-    //                             attackerShipNameByTypeId = await this.getNameForEntityId(attacker.weapon_type_id);
-    //                             if (attackerShipNameByTypeId.includes(nameFragment)) {
-    //                                 console.log('attacker weapon name: ' + attackerShipNameByTypeId);
-    //                                 requireSend = true;
-    //                                 break;
-    //                             } else {
-    //                                 // console.log('attacker weapon name: ' + attackerShipNameByTypeId + ' does not contain ' + nameFragment);
-    //                                 continue;
-    //                             }
-    //                         }
-    //                         console.log('attacker weapon groupId: ' + groupId);
-    //                         requireSend = true;
-    //                         break;
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //
-    //         if (requireSend) {
-    //             break;
-    //         }
-    //     }
-    //
-    //     return {requireSend, color, matched_type_id: matchedShipOrWeaponName};
-    // }
+    public async checkSecurityMaxInclusive(subscription: Subscription, data: ZkData): Promise<boolean> {
+        if (hasLimitType(subscription, LimitType.SECURITY_MAX_INCLUSIVE)) {
+            const systemData = await this.getSystemData(data.solar_system_id);
+            const maximumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MAX_INCLUSIVE));
+            if (maximumSecurityStatus < systemData.securityStatus) {
+                console.log(`limiting kill in ${systemData.systemName} due to inclusive maximum security status filter: ${systemData.securityStatus} > ${maximumSecurityStatus}`);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public async checkSecurityMaxExclusive(subscription: Subscription, data: ZkData): Promise<boolean> {
+        if (hasLimitType(subscription, LimitType.SECURITY_MAX_EXCLUSIVE)) {
+            const systemData = await this.getSystemData(data.solar_system_id);
+            const maximumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MAX_EXCLUSIVE));
+            if (maximumSecurityStatus <= systemData.securityStatus) {
+                console.log(`limiting kill in ${systemData.systemName} due to exclusive maximum security status filter: ${systemData.securityStatus} >= ${maximumSecurityStatus}`);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public async checkSecurityMinInclusive(subscription: Subscription, data: ZkData): Promise<boolean> {
+        if (hasLimitType(subscription, LimitType.SECURITY_MIN_INCLUSIVE)) {
+            const systemData = await this.getSystemData(data.solar_system_id);
+            const minimumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MIN_INCLUSIVE));
+            if (minimumSecurityStatus > systemData.securityStatus) {
+                console.log(`limiting kill in ${systemData.systemName} due to inclusive minimum security status filter: ${systemData.securityStatus} < ${minimumSecurityStatus}`);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public async checkSecurityMinExclusive(subscription: Subscription, data: ZkData): Promise<boolean> {
+        if (hasLimitType(subscription, LimitType.SECURITY_MIN_EXCLUSIVE)) {
+            const systemData = await this.getSystemData(data.solar_system_id);
+            const minimumSecurityStatus = Number(<string>getLimitType(subscription, LimitType.SECURITY_MIN_EXCLUSIVE));
+            if (minimumSecurityStatus >= systemData.securityStatus) {
+                console.log(`limiting kill in ${systemData.systemName} due to exclusive minimum security status filter: ${systemData.securityStatus} <= ${minimumSecurityStatus}`);
+                return false;
+            }
+        }
+        return true;
+    }
+
     private async sendIfAnyShipsMatchLimitFilter(
         data: ZkData,
         limitIds: string,
@@ -1055,18 +1035,21 @@ export class ZKillSubscriber {
 
     private async getSystemData(systemId: number): Promise<SolarSystem> {
         return await this.asyncLock.acquire('fetchSystem', async (done) => {
-
             let system = this.systems.get(systemId);
-            if (system) {
-                done(undefined, system);
-                return;
+            if (!system) {
+                console.log('found undefined system with id ' + systemId);
+                system = await this.esiClient.getSystemInfo(systemId);
+                this.systems.set(systemId, system);
+                fs.writeFileSync('./config/systems.json', JSON.stringify(Object.fromEntries(this.systems)), 'utf8');
             }
-            console.log('found undefined system with id ' + systemId);
-            system = await this.esiClient.getSystemInfo(systemId);
-            this.systems.set(systemId, system);
-            fs.writeFileSync('./config/systems.json', JSON.stringify(Object.fromEntries(this.systems)), 'utf8');
-
+            if (system.securityStatus >= 0.45) {
+                console.log('rounding security status: ' + system.securityStatus);
+                // round to nearest tenth decimal
+                system.securityStatus = Math.round(system.securityStatus * 10) / 10;
+            }
+            console.log('system: ' + system.systemName + ' - ' + system.securityStatus);
             done(undefined, system);
+            return;
         });
     }
 
