@@ -2,6 +2,7 @@ import {Client, Intents} from 'discord.js';
 import {SubscriptionType, ZKillSubscriber} from '../zKillSubscriber';
 
 jest.setTimeout(30000);
+
 describe('ZK Subscriber', () => {
     it('should send message to discord', async () => {
         const client = new Client({intents: [Intents.FLAGS.GUILDS]});

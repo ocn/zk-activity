@@ -383,20 +383,22 @@ export class ZKillSubscriber {
                 return;
             }
         }
-        if (hasLimitType(subscription, LimitType.TIME_RANGE_START)) {
+        if (hasLimitType(subscription, LimitType.TIME_RANGE_START) && hasLimitType(subscription, LimitType.TIME_RANGE_END)) {
             const startTime = Number(<string>getLimitType(subscription, LimitType.TIME_RANGE_START));
-            const killmailTime = new Date(data.killmail_time);
-            if (killmailTime.getHours() < startTime) {
-                console.log(`limiting kill due to time range start filter: ${killmailTime} < ${startTime}`);
-                return;
-            }
-        }
-        if (hasLimitType(subscription, LimitType.TIME_RANGE_END)) {
             const endTime = Number(<string>getLimitType(subscription, LimitType.TIME_RANGE_END));
             const killmailTime = new Date(data.killmail_time);
-            if (killmailTime.getHours() > endTime) {
-                console.log(`limiting kill due to time range end filter: ${killmailTime} > ${endTime}`);
-                return;
+            const killmailHour = killmailTime.getUTCHours();
+
+            if (startTime < endTime) {
+                if (killmailHour < startTime || killmailHour > endTime) {
+                    console.log(`limiting kill due to time range filter: ${killmailHour} not in range ${startTime} - ${endTime}`);
+                    return;
+                }
+            } else {
+                if (killmailHour < startTime && killmailHour > endTime) {
+                    console.log(`limiting kill due to time range filter: ${killmailHour} not in range ${startTime} - ${endTime}`);
+                    return;
+                }
             }
         }
         if (requireSend) {
