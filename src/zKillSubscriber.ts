@@ -1272,7 +1272,7 @@ export class ZKillSubscriber {
 
     strItemRenderById(itemId: number): string {
         try {
-            return `https://images.evetech.net/types/${itemId.toString()}/render`;
+            return `https://images.evetech.net/types/${itemId.toString()}/icon`;
         } catch {
             return '';
         }
