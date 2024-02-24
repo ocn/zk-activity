@@ -66,6 +66,16 @@ export interface Subscription {
     exclusionLimitAlsoComparesAttackerWeapons: boolean
 }
 
+export type PrepareEmbedFields = {
+    subscription: Subscription,
+    embedding: any,
+    data: ZkData,
+    matchedShipName: string | null,
+    matchedShipId: number | null,
+    minNumInvolved: number | null,
+    messageColor: ColorResolvable,
+};
+
 export class Attacker {
     alliance_id: number;
     corporation_id: number;
@@ -309,7 +319,7 @@ export class ZKillSubscriber {
         }
 
         if (subscription.limitTypes.size === 0) {
-            await this.sendMessageToDiscord(guildId, channelId, subscription.subType, data);
+            await this.sendMessageToDiscord(guildId, channelId, subscription, data);
             return;
         }
         if (hasLimitType(subscription, LimitType.SHIP_INCLUSION_TYPE_ID)) {
@@ -402,8 +412,9 @@ export class ZKillSubscriber {
             requireSend = await this.isInLocationLimit(subscription, data.solar_system_id);
             if (!requireSend) return;
         }
+        let minNumInvolved: number | null = null;
         if (hasLimitType(subscription, LimitType.MIN_NUM_INVOLVED)) {
-            const minNumInvolved = Number(<string>getLimitType(subscription, LimitType.MIN_NUM_INVOLVED));
+            minNumInvolved = Number(<string>getLimitType(subscription, LimitType.MIN_NUM_INVOLVED));
             const numInvolved = data.attackers.length + 1;
             if (numInvolved < minNumInvolved) {
                 console.log(`limiting kill due to minimum number of involved parties filter: ${numInvolved} < ${minNumInvolved}`);
@@ -433,11 +444,11 @@ export class ZKillSubscriber {
             await this.sendMessageToDiscord(
                 guildId,
                 channelId,
-                subscription.subType,
+                subscription,
                 data,
-                subscription.id,
                 matchedShipName,
                 matchedShipId,
+                minNumInvolved,
                 color
             );
         }
@@ -582,11 +593,11 @@ export class ZKillSubscriber {
     public async sendMessageToDiscord(
         guildId: string,
         channelId: string,
-        subType: SubscriptionType,
+        subscription: Subscription,
         data: ZkData,
-        subId?: number,
         matchedShipName: string | null = null,
         matchedShipId: number | null = null,
+        minNumInvolved: number | null = null,
         messageColor: ColorResolvable = 'GREY',
     ) {
         await this.asyncLock.acquire('sendKill', async (done) => {
@@ -599,13 +610,21 @@ export class ZKillSubscriber {
 
             const channel = <TextChannel>this.doClient.channels.cache.get(channelId);
             if (!channel) {
-                await this.unsubscribe(subType, guildId, channelId, subId);
+                await this.unsubscribe(subscription.subType, guildId, channelId, subscription.id);
                 done();
                 return;
             }
 
             const embedding = await ogs({url: data.zkb.url}).catch(() => null);
-            const content: MessageOptions = await this.prepareMessageContent(embedding, data, matchedShipName, matchedShipId, messageColor);
+            const content: MessageOptions = await this.prepareMessageContent(
+                subscription,
+                embedding,
+                data,
+                matchedShipName,
+                matchedShipId,
+                minNumInvolved,
+                messageColor,
+            );
 
             try {
                 await channel.send(content);
@@ -621,12 +640,28 @@ export class ZKillSubscriber {
         });
     }
 
-    private async prepareMessageContent(embedding: any, data: ZkData, matchedShipName: string | null, matchedShipId: number | null, messageColor: ColorResolvable): Promise<MessageOptions> {
+    private async prepareMessageContent(
+        subscription: Subscription,
+        embedding: any,
+        data: ZkData,
+        matchedShipName: string | null,
+        matchedShipId: number | null,
+        minNumInvolved: number | null,
+        messageColor: ColorResolvable,
+    ): Promise<MessageOptions> {
         if (embedding?.error === false) {
             if (matchedShipName != null && matchedShipId != null) {
                 // Use a custom embed format that highlights the specific ship detected
                 return {
-                    embeds: await this.prepareEmbedFields(embedding, data, matchedShipName, matchedShipId, messageColor)
+                    embeds: await this.prepareEmbedFields({
+                        subscription: subscription,
+                        embedding: embedding,
+                        data: data,
+                        matchedShipName: matchedShipName,
+                        matchedShipId: matchedShipId,
+                        minNumInvolved: minNumInvolved,
+                        messageColor: messageColor,
+                    })
                 };
             } else {
                 // Default to the standard zkill embedding
@@ -655,52 +690,52 @@ export class ZKillSubscriber {
         }
     }
 
-    private async prepareEmbedFields(embedding: any, data: ZkData, matchedShipName: string, matchedShipId: number, messageColor: ColorResolvable): Promise<(MessageEmbed | MessageEmbedOptions | APIEmbed)[]> {
+    private async prepareEmbedFields(params: PrepareEmbedFields): Promise<(MessageEmbed | MessageEmbedOptions | APIEmbed)[]> {
         console.log('prepareEmbedFields');
-        const systemRegion = await this.getSystemData(data.solar_system_id);
+        const systemRegion = await this.getSystemData(params.data.solar_system_id);
         let victimDetails = '';
         let attackerDetails = '';
         let killmailDetails = '';
+        let victimShipName = '';
 
-
-        if (data.victim.ship_type_id != null) {
+        if (params.data.victim.ship_type_id != null) {
             try {
-                const victimShipName = await this.getNameForEntityId(data.victim.ship_type_id);
-                victimDetails += `Ship: [${victimShipName}](${this.strShipZk(data.victim.ship_type_id)})\n`;
+                victimShipName = await this.getNameForEntityId(params.data.victim.ship_type_id);
+                victimDetails += `Ship: [${victimShipName}](${this.strShipZk(params.data.victim.ship_type_id)})\n`;
             } catch (e) {
                 console.log(e);
             }
         }
-        if (data.victim.character_id != null) {
+        if (params.data.victim.character_id != null) {
             try {
-                const victimCharacterName = await this.getNameForCharacter(data.victim.character_id);
-                victimDetails += `Pilot: [${victimCharacterName}](${this.strPilotZk(data.victim.character_id)})\n`;
+                const victimCharacterName = await this.getNameForCharacter(params.data.victim.character_id);
+                victimDetails += `Pilot: [${victimCharacterName}](${this.strPilotZk(params.data.victim.character_id)})\n`;
             } catch (e) {
                 console.log(e);
             }
         }
-        if (data.victim.corporation_id != null) {
+        if (params.data.victim.corporation_id != null) {
             try {
-                const victimCorporationName = await this.getNameForCorporation(data.victim.corporation_id);
-                victimDetails += `Corp: [${victimCorporationName}](${this.strCorpZk(data.victim.corporation_id)})\n`;
+                const victimCorporationName = await this.getNameForCorporation(params.data.victim.corporation_id);
+                victimDetails += `Corp: [${victimCorporationName}](${this.strCorpZk(params.data.victim.corporation_id)})\n`;
             } catch (e) {
                 console.log(e);
             }
         }
-        if (data.victim.alliance_id != null) {
+        if (params.data.victim.alliance_id != null) {
             try {
-                const victimAllianceName = await this.getNameForAlliance(data.victim.alliance_id);
-                victimDetails += `Alliance: [${victimAllianceName}](${this.strAllianceZk(data.victim.alliance_id)})\n`;
+                const victimAllianceName = await this.getNameForAlliance(params.data.victim.alliance_id);
+                victimDetails += `Alliance: [${victimAllianceName}](${this.strAllianceZk(params.data.victim.alliance_id)})\n`;
             } catch (e) {
                 console.log(e);
             }
         }
-        console.log('victimDataDone');
+        console.log('victimparams.dataDone');
 
 
-        console.log('attackerData');
+        console.log('attackerparams.data');
         let lastHitAttacker = null;
-        for (const attacker of data.attackers) {
+        for (const attacker of params.data.attackers) {
             if (attacker.final_blow) {
                 lastHitAttacker = attacker;
                 break;
@@ -708,7 +743,7 @@ export class ZKillSubscriber {
         }
         if (lastHitAttacker == null) {
             console.log('No final blow attacker found, using first attacker as last hit attacker');
-            lastHitAttacker = data.attackers[0];
+            lastHitAttacker = params.data.attackers[0];
         }
         if (lastHitAttacker.ship_type_id != null) {
             try {
@@ -742,10 +777,24 @@ export class ZKillSubscriber {
                 console.log(e);
             }
         }
+        let idOfIconToRender: number;
+        if (params.matchedShipId != null) {
+            idOfIconToRender = params.matchedShipId;
+        } else if (params.data.victim.ship_type_id != null) {
+            idOfIconToRender = params.data.victim.ship_type_id;
+        } else if (lastHitAttacker.ship_type_id != null) {
+            idOfIconToRender = lastHitAttacker.ship_type_id;
+        } else if (lastHitAttacker.weapon_type_id != null) {
+            idOfIconToRender = lastHitAttacker.weapon_type_id;
+        } else {
+            console.log(`failed to find an icon to render for ${params.data.zkb.url}`);
+            throw new Error('failed to find an icon to render');
+        }
+        console.log('rendering icon: ' + this.strItemRenderById(idOfIconToRender));
 
         let affiliation = '```';
         const allianceCountMap = new Map<string, number>();
-        for (const attacker of data.attackers) {
+        for (const attacker of params.data.attackers) {
             const id = attacker.alliance_id ? attacker.alliance_id : attacker.corporation_id;
             let name = '';
             if (attacker.alliance_id) {
@@ -799,12 +848,17 @@ export class ZKillSubscriber {
             affiliation += `${others}${' '.repeat(spaces)}x${othersCount}\n`;
         }
         affiliation += '```';
-        console.log('attackerDataDone');
+        console.log('attackerparams.dataDone');
 
 
         console.log(systemRegion);
         killmailDetails += `System: [${systemRegion.systemName}](${this.strSystemDotlan(systemRegion.id)}) ([${systemRegion.regionName}](${this.strRegionDotlan(systemRegion.regionId)}))\n`;
-        const closestCelestial = await this.getClosestCelestial(systemRegion.id, data.victim.position.x, data.victim.position.y, data.victim.position.z);
+        const closestCelestial = await this.getClosestCelestial(
+            systemRegion.id,
+            params.data.victim.position.x,
+            params.data.victim.position.y,
+            params.data.victim.position.z
+        );
         const distance = (closestCelestial.distance / 1000);
         let distanceInUnits;
         if (distance > 1500000) {
@@ -813,8 +867,8 @@ export class ZKillSubscriber {
             distanceInUnits = distance.toFixed(2) + ' km';
         }
         killmailDetails += `Celestial: [${closestCelestial.itemName}](${this.strLocation(closestCelestial.itemId)}) (${distanceInUnits})\n`;
-        // convert data.killmail_time into a relative time
-        const killmailTime = new Date(data.killmail_time);
+        // convert params.data.killmail_time into a relative time
+        const killmailTime = new Date(params.data.killmail_time);
         const now = new Date();
         const diff = now.getTime() - killmailTime.getTime();
         const seconds = Math.floor(diff / 1000);
@@ -857,10 +911,14 @@ export class ZKillSubscriber {
         // convert the killmail_time `2023-01-17T01:53:02Z` to YYYY/MM/DD HH:MM
         const killmailTimeFormatted = killmailTime.toISOString().replace(/T/, ' ').replace(/\..+/, '');
 
+        console.log('total value: ' + params.data.zkb.totalValue);
+        const killmail_value = this.abbreviateNumber(params.data.zkb.totalValue);
+        console.log('killmail_value: ' + killmail_value);
+
         const fields: { inline: boolean; name: string; value: string }[] = [];
         [
             {
-                name: `__Attackers__ - ${data.attackers.length} `,
+                name: `__Attackers__ - ${params.data.attackers.length} `,
                 value: affiliation,
                 inline: false,
             },
@@ -880,20 +938,43 @@ export class ZKillSubscriber {
                 inline: false
             },
         ].forEach((field) => fields.push(field));
+
+        let title: string;
+
+        if (params.minNumInvolved != null) {
+            title = `${params.data.attackers.length} pilots destroyed a \`${victimShipName}\` in ${systemRegion.systemName} (${systemRegion.regionName})`;
+        } else if (params.matchedShipName != null) {
+            if (params.messageColor === 'GREEN') {
+                title = `\`${params.matchedShipName}\` active in ${systemRegion.systemName} (${systemRegion.regionName})`;
+            } else {
+                title = `\`${params.matchedShipName}\` died in ${systemRegion.systemName} (${systemRegion.regionName})`;
+            }
+        } else {
+            title = params.embedding?.result.ogTitle;
+        }
+
         return [{
-            title: `\`${matchedShipName}\` activity in ${systemRegion.systemName} (${systemRegion.regionName})`,
+            title: title,
             thumbnail: {
-                url: this.strItemRenderById(matchedShipId),
-                height: embedding?.result.ogImage?.height,
-                width: embedding?.result.ogImage?.width
+                url: this.strItemRenderById(idOfIconToRender),
+                height: params.embedding?.result.ogImage?.height,
+                width: params.embedding?.result.ogImage?.width
             },
-            url: data.zkb.url,
-            color: messageColor,
+            url: params.data.zkb.url,
+            color: params.messageColor,
             fields: fields,
             footer: {
-                text: `${killmailTimeFormatted} - ${relativeTime}`
+                text: `${killmailTimeFormatted} - ${relativeTime} - ${killmail_value} total value destroyed`
             }
         }];
+    }
+
+    public abbreviateNumber(n: number) {
+        if (n < 1e3) return n;
+        if (n >= 1e3 && n < 1e6) return +(n / 1e3).toFixed(1) + 'K';
+        if (n >= 1e6 && n < 1e9) return +(n / 1e6).toFixed(1) + 'mil';
+        if (n >= 1e9 && n < 1e12) return +(n / 1e9).toFixed(1) + 'bil';
+        if (n >= 1e12) return +(n / 1e12).toFixed(1) + 'tril';
     }
 
     private async handlePermissionError(channel: TextChannel) {
