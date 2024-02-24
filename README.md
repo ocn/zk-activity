@@ -1,7 +1,43 @@
 # zk-activity
-Post EVE Online killmails from zkillboard.com to a discord channel. Options apply a variety of filters for incoming mails.
 
-The bot was forked from [hazardous](https://github.com/SvenBrnn/hazardous-killbot).
+[![TypeScript](https://badges.frapsoft.com/typescript/code/typescript.svg?v=101)](https://github.com/ellerbrock/typescript-badges/)
+<img alt="GitHub Issues" src="https://img.shields.io/github/issues/ocn/zk-activity" />
+<img alt="GitHub Pull Requests" src="https://img.shields.io/github/issues-pr/ocn/zk-activity" />
+<img alt="GitHub Last Commit" src="https://img.shields.io/github/last-commit/ocn/zk-activity" />
+<img alt="GitHub Contributors" src="https://img.shields.io/github/contributors/ocn/zk-activity" />
+<img alt="GitHub Commit Activity (Month)" src="https://img.shields.io/github/commit-activity/m/ocn/zk-activity" />
+<img alt="Github License" src="https://img.shields.io/github/license/ocn/zk-activity" />
+
+
+zk-activity is a bot that brings EVE Online killmails from zkillboard.com into your Discord channel. It provides a way to filter the incoming mails according to your preferences. This bot is a derivative of [hazardous](https://github.com/SvenBrnn/hazardous-killbot).
+
+The bot works by subscribing to a data feed from zkillboard.com and processing the incoming data according to the filters you set up. This allows you to customize the bot to monitor specific regions of space for activity involving certain classes of ships, or to track a particular group of pilots.
+
+To use the bot, you invite it to your Discord server using a provided Discord invite URL link. Once the bot is on your server, you can set up feeds in a Discord channel. The bot will then start delivering killmails from EVE Online to your Discord channel based on the filters you've set up.
+
+[Invite the zk-activity Discord bot to your Discord server here.]()
+
+## Table of Contents
+
+- [Getting Started](#getting-started)
+- [Commands](#commands)
+- [Examples](#examples)
+- [Development](#development)
+- [Contact](#contact)
+- [License](#license)
+
+## Getting Started
+
+To use this bot, you can either host it yourself or contact the developer for hosting at a PLEX cost.
+
+### Self-Hosting
+
+If you choose to host the bot yourself, follow these steps:
+
+1. Clone this repository to your local machine.
+2. Install the required dependencies by running `yarn install` or `npm install`.
+3. Copy the `env.sample` file to `.env` and fill out the required parameters.
+4. Run `docker-compose up -d` to start the bot.
 
 ## Commands
 
@@ -28,62 +64,177 @@ The bot was forked from [hazardous](https://github.com/SvenBrnn/hazardous-killbo
 | /zkill-unsubscribe all       | Make the bot not post any on this channel anymore                                                          |
 | /zk-activity-diag            | Display the current channel's list of subscriptions                                                        |
 
-## Examples 
+## Examples
 
-Here's how an example embed notification looks when filtering for a ship group:
+This bot allows you to set up feeds and limit types to track regional data for specific ships by their group identifiers. In this example, a subscription is set up for a public feed with an ID of 12345. The limit types are set to a minimum ISK value of 5000000, a region ID of 10000002 (The Forge), and a ship ID of 670 (Caldari Shuttle).
 
-<img src="https://cdn.discordapp.com/attachments/972047941390987264/1210723339044393001/image.png?ex=65eb98fa&is=65d923fa&hm=e1aa3edc6723671aeeda0103e1fb4df9a11c62e4163675c9948f92989678dc9c&">
+Here's how you can do it:
 
-When not filtering for a ship group by a ship ID, the default https://zkillboard.org embed format is used.
+### Setting up a Feed
 
-### Where to find the id?
-Open your corp/char/alliance page on https://zkillboard.com and copy the number at the end of the link.
+To set up a feed, you use the `/zkill-subscribe` command followed by the type of feed and the ID. For example, to subscribe to a public feed with an ID of 12345, you would use:
 
-Or, search for the item, group, or market group on https://everef.net.
+```
+/zkill-subscribe public 12345
+```
 
-<img src="./docs/id.png" width=900>
+### Setting up Limit Types
 
-### Filtering by region of space
+You can also set up limit types when subscribing to a feed. Limit types allow you to filter the incoming mails according to your preferences. For example, to subscribe to a public feed with an ID of 12345 and set a minimum ISK value of 5000000, you would use:
 
-#### Highsec Only Limit:
+```
+/zkill-subscribe public 12345 min_value=5000000
+```
 
-- Set SECURITY_MIN_INCLUSIVE to '0.5'
+### Tracking Regional Data for Specific Ships
 
-#### Lowsec Only Limit:
+To track regional data for specific ships, you can use the `limit_region_ids` and `limit_included_ship_ids` parameters. For example, to subscribe to a public feed with an ID of 12345, limit it to region ID 10000002 (The Forge), and include ship ID 670 (Caldari Shuttle), you would use:
 
-- Set SECURITY_MIN_EXCLUSIVE to '0.0'
-- Set SECURITY_MAX_EXCLUSIVE to '0.5'
+```
+/zkill-subscribe public 12345 limit_region_ids=10000002 limit_included_ship_ids=670
+```
 
-#### Nullsec Only Limit:
+### Tracking Ship Categories
 
-- Set SECURITY_MAX_INCLUSIVE to '0.0'
+When you specify the ID of a particular ship from the game, the bot will track not only that specific ship but also the entire group to which that ship belongs. This means that if you specify a ship that belongs to a category such as Dreadnoughts or Control Towers, the bot will track all ships within that category, including racial and faction equivalents.
+
+For example, if you specify the ID of a Moros (a Gallente Dreadnought), the bot will track all Dreadnoughts, including the Revelation (Amarr), Phoenix (Caldari), and Naglfar (Minmatar), as well as any faction Dreadnoughts.
+
+To track a category of ships, you can use the `limit_included_ship_ids` parameter with the ID of any ship from the category. For example, to subscribe to a public feed with an ID of 12345, limit it to region ID 10000002 (The Forge), and track all Dreadnoughts, you would use:
+
+```
+/zkill-subscribe public 12345 limit_region_ids=10000002 limit_included_ship_ids=19720
+```
+
+In this example, 19720 is the ID of the Moros. Please replace the IDs in the example with the actual IDs and additional filter flags that you want to use.
+
+### Using a JSON Config File
+
+You can also use a JSON config file to load and store your subscriptions. Here's an example config file:
+
+```json
+{
+  "subscriptions": [
+    {
+      "type": "public",
+      "id": 12345,
+      "limit_types": {
+        "min_value": 5000000,
+        "limit_region_ids": [10000002],
+        "limit_included_ship_ids": [670]
+      }
+    }
+  ]
+}
+```
+
+To load this config file, you would use the `withConfig` method in your code:
+
+```typescript
+ZKillSubscriber.getInstance().withConfig('./path/to/your/config.json');
+```
+
+Replace `'./path/to/your/config.json'` with the actual path to your config file.
+
+Please replace the IDs in the examples with the actual IDs and additional filter flags that you may want to use.
+
+### Tracking Multiple Ships
+
+To track multiple ships, you can use the `limit_included_ship_ids` parameter with multiple IDs separated by commas. For example, to subscribe to a public feed with an ID of 12345, limit it to region ID 10000002 (The Forge), and include ship IDs 670 (Caldari Shuttle) and 671 (Gallente Shuttle), you would use:
+
+### Filtering by Name Fragment
+
+You can filter the incoming mails by a name fragment. This can be useful if you want to track activity related to specific entities whose names contain a certain string. For example, to subscribe to a public feed with an ID of 12345 and require the name fragment "Caldari" in the name of the matched type IDs, you would use:
+
+```
+/zkill-subscribe public 12345 required_name_fragment=Caldari
+```
+
+### Filtering by Security Status
+
+You can also filter the incoming mails by the security status of the solar system where the activity took place. This can be useful if you want to track activity in highsec, lowsec, or nullsec space. For example, to subscribe to a public feed with an ID of 12345 and set an inclusive limit to a maximum security of 0.5 (lowsec and nullsec only), you would use:
+
+```
+/zkill-subscribe public 12345 limit_security_max_inclusive=0.5
+```
+
+You will track all kills in lowsec and nullsec space.
+
+To set an exclusive limit to a maximum security of 0.0 (lowsec), you would use:
+
+```
+/zkill-subscribe public 12345 limit_security_max_inclusive=0.5 limit_security_max_exclusive=0.0
+```
+
+You will track all kills only in lowsec space.
+
+To filter only for kills in nullsec or highsec space, you can only use the inclusive upper limit to a minimum security of 0.0:
+
+```
+/zkill-subscribe public 12345 limit_security_max_inclusive=0.0
+```
+
+### Filtering by Character & Group affiliations
+
+You can filter the incoming mails by character, corporation, or alliance. This can be useful if you want to track activity related to a specific group of pilots. 
+
+For example, to subscribe to a public feed with an ID of 12345, limit it to region ID 10000002 (The Forge), and track kills by an alliance called BLACKFLAG, you would use:
+
+```
+/zkill-subscribe public 12345 limit_region_ids=10000002 limit_alliance_ids=99010015
+```
+
+Please replace the IDs and alliance name in the example with the actual IDs and alliance name that you want to use.
 
 ## Development
 
-Written in Typescript. Uses the zkillboard webhook endpoint and discord.js.
+This application is written in TypeScript and utilizes the zkillboard webhook endpoint and discord.js. It is containerized using Docker, and orchestrated with Docker Compose for ease of development and deployment.
 
 ### Requirements:
 
-- docker
-- docker-compose
+- Docker
+- Docker Compose
 
-### Start up:
+### Setup:
 
-- Copy the env.sample to `.env` and fill out params
-- Run `docker-compose up -d`
+1. Clone this repository to your local machine.
+2. Copy the `env.sample` file to `.env` and fill out the required parameters.
+3. Run `docker-compose up -d` to start the application in detached mode.
 
-### Build:
- 
-- run `docker build -t zk-activity:latest`
+### Building the Docker Image:
 
-### Config:
+To build the Docker image for this application, run the following command:
 
-#### Environment
+```
+docker build -t zk-activity:latest .
+```
 
-| key                  | description                        |
+This will build a Docker image with the tag `zk-activity:latest`.
+
+### Configuration:
+
+Configuration for this application is handled through environment variables, which can be set in the `.env` file.
+
+#### Environment Variables:
+
+| Key                  | Description                        |
 |----------------------|------------------------------------|
-| DISCORD_BOT_TOKEN    | Your discord bot token             |
-| DISCORD_CLIENT_ID    | Your discord application client id |
+| DISCORD_BOT_TOKEN    | Your Discord bot token             |
+| DISCORD_CLIENT_ID    | Your Discord application client ID |
+
+
+#### Example .env file
+
+```shell
+DISCORD_BOT_TOKEN=your_discord_bot_token
+DISCORD_CLIENT_ID=your_discord_client_id
+```
+
+Please replace the placeholders with your actual Discord bot token and application client ID.
+
+## Contact
+
+For any inquiries or if you need assistance with hosting the bot, please contact the developer at [developer's email].
 
 ## License 
 Copyright 2024 ocn
