@@ -90,7 +90,7 @@ describe('ZK Subscriber', () => {
             sub.subscribe(SubscriptionType.PUBLIC, '888224317991706685', '1115807643748012072', new Map(), true, true, true, true, 1);
             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             // @ts-ignore
-            await sub.sendMessageToDiscord('888224317991706685', '1115807643748012072', null, zk_data, 1, 'Mobile Small Warp Disruptor II', 'GREEN');
+            await sub.sendMessageToDiscord('888224317991706685', '1115807643748012072', sub, zk_data, 'Mobile Small Warp Disruptor II', 26892, 30, 'RED');
             console.log('done');
         });
         await new Promise(resolve => setTimeout(resolve, 7000));
