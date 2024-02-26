@@ -14,6 +14,7 @@ import MemoryCache from 'memory-cache';
 import ogs from 'open-graph-scraper';
 import {APIEmbed} from 'discord-api-types/v10';
 import * as fs from 'fs';
+import * as util from 'util';
 import {EsiClient} from './lib/esiClient';
 
 export enum SubscriptionType {
@@ -66,19 +67,33 @@ export interface Subscription {
     exclusionLimitAlsoComparesAttackerWeapons: boolean
 }
 
+export type AllianceDescription = {
+    id: number,
+    name: string,
+    ticker: string,
+}
+
 export type PrepareEmbedFields = {
+    guildId: string,
+    channelId: string,
     subscription: Subscription,
     embedding: any,
     data: ZkData,
-    matchedShipName: string | null,
-    matchedShipId: number | null,
+    matchedShip: FilterShipMatch | null,
     minNumInvolved: number | null,
     messageColor: ColorResolvable,
 };
 
+export type FilterShipMatch = {
+    shipName: string | null,
+    typeId: number | null,
+    corpId: number | null,
+    allianceId: number | null,
+}
+
 export class Attacker {
-    alliance_id: number;
-    corporation_id: number;
+    alliance_id: number | null;
+    corporation_id: number | null;
     damage_done: number;
     final_blow: boolean;
     security_status: number;
@@ -203,20 +218,6 @@ function getLimitType(subscription: Subscription, limitType: LimitType): string 
         console.log(`subscription.limitTypes: ${subscription.limitTypes}`);
         console.log(`subscription.limitTypes type: ${typeof subscription.limitTypes}`);
         process.exit(2);
-        // Object.keys(subscription.limitTypes).forEach(key => {
-        //     console.log(`key: ${key} limitType: ${limitType}`);
-        //     if (key === limitType) {
-        //         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        //         // @ts-ignore
-        //         console.log(`key: ${key} limitType: ${limitType} value: ${subscription.limitTypes[key]}`);
-        //         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        //         // @ts-ignore
-        //         const ret = subscription.limitTypes[key] as string | undefined;
-        //         console.log(`ret: ${ret}, typeof ret: ${typeof ret}`);
-        //         return ret;
-        //     }
-        // });
-        return undefined;
     }
 }
 
@@ -253,7 +254,7 @@ export class ZKillSubscriber {
     protected asyncLock: AsyncLock;
     protected esiClient: EsiClient;
 
-    protected constructor(client: Client) {
+    protected constructor(client: Client, connect = true) {
         this.asyncLock = new AsyncLock();
         this.esiClient = new EsiClient();
         this.subscriptions = new Map<string, SubscriptionGuild>();
@@ -262,7 +263,9 @@ export class ZKillSubscriber {
         this.names = new Map<number, string>();
         this.doClient = client;
         this.rest = new REST({version: '9'}).setToken(process.env.DISCORD_BOT_TOKEN || '');
-        ZKillSubscriber.connect(this);
+        if (connect) {
+            ZKillSubscriber.connect(this);
+        }
     }
 
     protected static connect(sub: ZKillSubscriber) {
@@ -311,8 +314,7 @@ export class ZKillSubscriber {
     ) {
         let color: ColorResolvable = 'GREEN';
         let requireSend = false;
-        let matchedShipName: string | null = null;
-        let matchedShipId: number | null = null;
+        let matchedShip: FilterShipMatch | null = null;
 
         if (subscription.minValue > data.zkb.totalValue) {
             return; // Do not send if below the min value
@@ -336,8 +338,7 @@ export class ZKillSubscriber {
             );
             requireSend = __ret.requireSend;
             color = __ret.color;
-            matchedShipName = __ret.matchedShipName;
-            matchedShipId = __ret.matchedTypeId;
+            matchedShip = __ret.matchedShip;
             if (!requireSend) return;
         }
         if (!await this.checkSecurityMaxExclusive(subscription, data)) {
@@ -446,8 +447,7 @@ export class ZKillSubscriber {
                 channelId,
                 subscription,
                 data,
-                matchedShipName,
-                matchedShipId,
+                matchedShip,
                 minNumInvolved,
                 color
             );
@@ -517,8 +517,7 @@ export class ZKillSubscriber {
             return {
                 requireSend: false,
                 color: <ColorResolvable>'GREEN',
-                matchedShipName: null,
-                matchedTypeId: null,
+                matchedShip: null,
             };
         }
 
@@ -530,8 +529,12 @@ export class ZKillSubscriber {
                 return {
                     requireSend: true,
                     color: <ColorResolvable>'RED',
-                    matchedShipName: await this.getNameForEntityId(shipTypeId),
-                    matchedTypeId: shipTypeId,
+                    matchedShip: {
+                        shipName: await this.getNameForEntityId(shipTypeId),
+                        typeId: shipTypeId,
+                        corpId: data.victim.corporation_id,
+                        allianceId: data.victim.alliance_id,
+                    },
                 };
             }
 
@@ -547,7 +550,12 @@ export class ZKillSubscriber {
                         return {
                             requireSend: true,
                             color: <ColorResolvable>'GREEN',
-                            matchedShipName: await this.getNameForEntityId(id),
+                            matchedShip: {
+                                shipName: await this.getNameForEntityId(id),
+                                typeId: id,
+                                corpId: attacker.corporation_id,
+                                allianceId: attacker.alliance_id
+                            },
                             matchedTypeId: id,
                         };
                     }
@@ -560,8 +568,12 @@ export class ZKillSubscriber {
                         return {
                             requireSend: true,
                             color: <ColorResolvable>'GREEN',
-                            matchedShipName: await this.getNameForEntityId(id),
-                            matchedTypeId: id,
+                            matchedShip: {
+                                shipName: await this.getNameForEntityId(id),
+                                typeId: id,
+                                corpId: attacker.corporation_id,
+                                allianceId: attacker.alliance_id
+                            },
                         };
                     }
                 }
@@ -571,7 +583,7 @@ export class ZKillSubscriber {
         return {
             requireSend: false,
             color: <ColorResolvable>'RED',
-            matchedShipName: null,
+            matchedShip: null,
             matchedTypeId: null,
         };
     }
@@ -595,8 +607,7 @@ export class ZKillSubscriber {
         channelId: string,
         subscription: Subscription,
         data: ZkData,
-        matchedShipName: string | null = null,
-        matchedShipId: number | null = null,
+        matchedShip: FilterShipMatch | null = null,
         minNumInvolved: number | null = null,
         messageColor: ColorResolvable = 'GREY',
     ) {
@@ -616,17 +627,20 @@ export class ZKillSubscriber {
             }
 
             const embedding = await ogs({url: data.zkb.url}).catch(() => null);
-            const content: MessageOptions = await this.prepareMessageContent(
+            const params: PrepareEmbedFields = {
+                guildId,
+                channelId,
                 subscription,
                 embedding,
                 data,
-                matchedShipName,
-                matchedShipId,
+                matchedShip,
                 minNumInvolved,
                 messageColor,
-            );
+            };
+            const content: MessageOptions = await this.prepareMessageContent(params);
 
             try {
+                console.log('content: ' + util.inspect(content, {depth: 5}));
                 await channel.send(content);
                 MemoryCache.put(cacheKey, 'send', 60000); // Prevent from sending again, cache it for 1 min
             } catch (e) {
@@ -640,53 +654,34 @@ export class ZKillSubscriber {
         });
     }
 
-    private async prepareMessageContent(
-        subscription: Subscription,
-        embedding: any,
-        data: ZkData,
-        matchedShipName: string | null,
-        matchedShipId: number | null,
-        minNumInvolved: number | null,
-        messageColor: ColorResolvable,
-    ): Promise<MessageOptions> {
-        if (embedding?.error === false) {
-            if (matchedShipName != null && matchedShipId != null) {
-                // Use a custom embed format that highlights the specific ship detected
-                return {
-                    embeds: await this.prepareEmbedFields({
-                        subscription: subscription,
-                        embedding: embedding,
-                        data: data,
-                        matchedShipName: matchedShipName,
-                        matchedShipId: matchedShipId,
-                        minNumInvolved: minNumInvolved,
-                        messageColor: messageColor,
-                    })
-                };
-            } else {
-                // Default to the standard zkill embedding
-                return {
-                    embeds: [{
-                        title: embedding?.result.ogTitle,
-                        description: embedding?.result.ogDescription,
-                        thumbnail: {
-                            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                            // @ts-ignore
-                            url: embedding?.result.ogImage?.url,
-                            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                            // @ts-ignore
-                            height: embedding?.result.ogImage?.height,
-                            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                            // @ts-ignore
-                            width: embedding?.result.ogImage?.width
-                        },
-                        url: data.zkb.url,
-                        color: messageColor,
-                    }]
-                };
-            }
+    private async prepareMessageContent(params: PrepareEmbedFields): Promise<MessageOptions> {
+        if (params.matchedShip != null || params.minNumInvolved != null) {
+            return {
+                embeds: await this.prepareEmbedFields(params)
+            };
+        } else if (params.embedding?.error === false) {
+            console.log('defaulting to standard embed');
+            return {
+                embeds: [{
+                    title: params.embedding?.result.ogTitle,
+                    description: params.embedding?.result.ogDescription,
+                    thumbnail: {
+                        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                        // @ts-ignore
+                        url: params.embedding?.result.ogImage?.url,
+                        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                        // @ts-ignore
+                        height: params.embedding?.result.ogImage?.height,
+                        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                        // @ts-ignore
+                        width: params.embedding?.result.ogImage?.width
+                    },
+                    url: params.data.zkb.url,
+                    color: params.messageColor,
+                }]
+            };
         } else {
-            return {content: data.zkb.url};
+            return {content: params.data.zkb.url};
         }
     }
 
@@ -701,15 +696,15 @@ export class ZKillSubscriber {
         if (params.data.victim.ship_type_id != null) {
             try {
                 victimShipName = await this.getNameForEntityId(params.data.victim.ship_type_id);
-                victimDetails += `Ship: [${victimShipName}](${this.strShipZk(params.data.victim.ship_type_id)})\n`;
+                victimDetails += `Ship: [${victimShipName}](${params.data.zkb.url})\n`;
             } catch (e) {
                 console.log(e);
             }
         }
-        if (params.data.victim.character_id != null) {
+        if (params.data.victim.alliance_id != null) {
             try {
-                const victimCharacterName = await this.getNameForCharacter(params.data.victim.character_id);
-                victimDetails += `Pilot: [${victimCharacterName}](${this.strPilotZk(params.data.victim.character_id)})\n`;
+                const victimAllianceName = await this.getNameForAlliance(params.data.victim.alliance_id);
+                victimDetails += `Alliance: [${victimAllianceName}](${this.strAllianceZk(params.data.victim.alliance_id)})\n`;
             } catch (e) {
                 console.log(e);
             }
@@ -722,10 +717,10 @@ export class ZKillSubscriber {
                 console.log(e);
             }
         }
-        if (params.data.victim.alliance_id != null) {
+        if (params.data.victim.character_id != null) {
             try {
-                const victimAllianceName = await this.getNameForAlliance(params.data.victim.alliance_id);
-                victimDetails += `Alliance: [${victimAllianceName}](${this.strAllianceZk(params.data.victim.alliance_id)})\n`;
+                const victimCharacterName = await this.getNameForCharacter(params.data.victim.character_id);
+                victimDetails += `Pilot: [${victimCharacterName}](${this.strPilotZk(params.data.victim.character_id)})\n`;
             } catch (e) {
                 console.log(e);
             }
@@ -753,10 +748,10 @@ export class ZKillSubscriber {
                 console.log(e);
             }
         }
-        if (lastHitAttacker.character_id != null) {
+        if (lastHitAttacker.alliance_id != null) {
             try {
-                const attackerCharacterName = await this.getNameForCharacter(lastHitAttacker.character_id);
-                attackerDetails += `Pilot: [${attackerCharacterName}](${this.strPilotZk(lastHitAttacker.character_id)})\n`;
+                const attackerAllianceName = await this.getNameForAlliance(lastHitAttacker.alliance_id);
+                attackerDetails += `Alliance: [${attackerAllianceName}](${this.strAllianceZk(lastHitAttacker.alliance_id)})\n`;
             } catch (e) {
                 console.log(e);
             }
@@ -769,23 +764,55 @@ export class ZKillSubscriber {
                 console.log(e);
             }
         }
-        if (lastHitAttacker.alliance_id != null) {
+        if (lastHitAttacker.character_id != null) {
             try {
-                const attackerAllianceName = await this.getNameForAlliance(lastHitAttacker.alliance_id);
-                attackerDetails += `Alliance: [${attackerAllianceName}](${this.strAllianceZk(lastHitAttacker.alliance_id)})\n`;
+                const attackerCharacterName = await this.getNameForCharacter(lastHitAttacker.character_id);
+                attackerDetails += `Pilot: [${attackerCharacterName}](${this.strPilotZk(lastHitAttacker.character_id)})\n`;
             } catch (e) {
                 console.log(e);
             }
         }
+        const mostCommonShip = this.findMostCommonShipTypeIdAndCount(params.data.attackers);
+        console.log(`Most common ship type ID among attackers: ${mostCommonShip}`);
+
         let idOfIconToRender: number;
-        if (params.matchedShipId != null) {
-            idOfIconToRender = params.matchedShipId;
+        let affiliationIconURLToRender: string;
+        if (params.matchedShip?.typeId != null) {
+            idOfIconToRender = params.matchedShip.typeId;
+            if (params.matchedShip.allianceId) {
+                affiliationIconURLToRender = this.strAllianceIconById(params.matchedShip.allianceId);
+            } else if (params.matchedShip.corpId) {
+                affiliationIconURLToRender = this.strCorporationIconById(params.matchedShip.corpId);
+            } else {
+                affiliationIconURLToRender = this.strItemRenderById(idOfIconToRender);
+            }
         } else if (params.data.victim.ship_type_id != null) {
             idOfIconToRender = params.data.victim.ship_type_id;
+            if (params.data.victim.alliance_id != null) {
+                affiliationIconURLToRender = this.strAllianceIconById(params.data.victim.alliance_id);
+            } else if (params.data.victim.corporation_id != null) {
+                affiliationIconURLToRender = this.strCorporationIconById(params.data.victim.corporation_id);
+            } else {
+                affiliationIconURLToRender = this.strItemRenderById(idOfIconToRender);
+            }
         } else if (lastHitAttacker.ship_type_id != null) {
             idOfIconToRender = lastHitAttacker.ship_type_id;
+            if (lastHitAttacker.alliance_id != null) {
+                affiliationIconURLToRender = this.strAllianceIconById(lastHitAttacker.alliance_id);
+            } else if (lastHitAttacker.corporation_id != null) {
+                affiliationIconURLToRender = this.strCorporationIconById(lastHitAttacker.corporation_id);
+            } else {
+                affiliationIconURLToRender = this.strItemRenderById(idOfIconToRender);
+            }
         } else if (lastHitAttacker.weapon_type_id != null) {
             idOfIconToRender = lastHitAttacker.weapon_type_id;
+            if (lastHitAttacker.alliance_id != null) {
+                affiliationIconURLToRender = this.strAllianceIconById(lastHitAttacker.alliance_id);
+            } else if (lastHitAttacker.corporation_id != null) {
+                affiliationIconURLToRender = this.strCorporationIconById(lastHitAttacker.corporation_id);
+            } else {
+                affiliationIconURLToRender = this.strItemRenderById(idOfIconToRender);
+            }
         } else {
             console.log(`failed to find an icon to render for ${params.data.zkb.url}`);
             throw new Error('failed to find an icon to render');
@@ -796,6 +823,10 @@ export class ZKillSubscriber {
         const allianceCountMap = new Map<string, number>();
         for (const attacker of params.data.attackers) {
             const id = attacker.alliance_id ? attacker.alliance_id : attacker.corporation_id;
+            if (id == null) {
+                console.log(`id for attacker ${attacker} is null, skipping`);
+                continue;
+            }
             let name = '';
             if (attacker.alliance_id) {
                 try {
@@ -828,15 +859,19 @@ export class ZKillSubscriber {
                 maxNameLength = name.length;
             }
         });
+        if (maxNameLength >= 26) {
+            maxNameLength = 26;
+        }
         console.log('maxNameLength: ' + maxNameLength);
         const sortedEntries = Array.from(allianceCountMap.entries()).sort((a, b) => b[1] - a[1]);
-        const padding = 5;
+        const padding = 3;
         let othersCount = 0;
         let firstEntry = true;
         for (const [key, value] of sortedEntries) {
-            if (value > 1 || firstEntry) {
-                const spaces = maxNameLength - key.length + padding;
-                affiliation += `${key}${' '.repeat(spaces)}x${value}\n`;
+            if (value > 2 || firstEntry) {
+                const spaces = maxNameLength - Math.min(key.length, 26) + padding;
+                const formattedKey = key.length > 26 ? key.slice(0, 26) + '-\n' + key.slice(26) : key;
+                affiliation += `${formattedKey}${' '.repeat(spaces)}x${value}\n`;
                 firstEntry = false;
             } else {
                 othersCount += value;
@@ -849,7 +884,6 @@ export class ZKillSubscriber {
         }
         affiliation += '```';
         console.log('attackerparams.dataDone');
-
 
         console.log(systemRegion);
         killmailDetails += `System: [${systemRegion.systemName}](${this.strSystemDotlan(systemRegion.id)}) ([${systemRegion.regionName}](${this.strRegionDotlan(systemRegion.regionId)}))\n`;
@@ -864,9 +898,10 @@ export class ZKillSubscriber {
         if (distance > 1500000) {
             distanceInUnits = (distance / 150000000).toFixed(2) + ' au';
         } else {
-            distanceInUnits = distance.toFixed(2) + ' km';
+            distanceInUnits = Math.round(distance) + ' km';
         }
-        killmailDetails += `Celestial: [${closestCelestial.itemName}](${this.strLocation(closestCelestial.itemId)}) (${distanceInUnits})\n`;
+        const closestCelestialName = closestCelestial.itemName;
+        killmailDetails += `Celestial: [${closestCelestialName}](${this.strLocation(closestCelestial.itemId)}) (${distanceInUnits})\n`;
         // convert params.data.killmail_time into a relative time
         const killmailTime = new Date(params.data.killmail_time);
         const now = new Date();
@@ -878,7 +913,7 @@ export class ZKillSubscriber {
         const weeks = Math.floor(days / 7);
         const months = Math.floor(weeks / 4);
         const years = Math.floor(months / 12);
-        let relativeTime = '';
+        let relativeTime: string;
         if (years > 1) {
             relativeTime = years + ' years ago';
         } else if (years === 1) {
@@ -908,8 +943,9 @@ export class ZKillSubscriber {
         } else {
             relativeTime = '1 second ago';
         }
+
         // convert the killmail_time `2023-01-17T01:53:02Z` to YYYY/MM/DD HH:MM
-        const killmailTimeFormatted = killmailTime.toISOString().replace(/T/, ' ').replace(/\..+/, '');
+        // const killmailTimeFormatted = killmailTime.toISOString().replace(/T/, ' ').replace(/\..+/, '');
 
         console.log('total value: ' + params.data.zkb.totalValue);
         const killmail_value = this.abbreviateNumber(params.data.zkb.totalValue);
@@ -918,7 +954,7 @@ export class ZKillSubscriber {
         const fields: { inline: boolean; name: string; value: string }[] = [];
         [
             {
-                name: `__Attackers__ - ${params.data.attackers.length} `,
+                name: `__Attackers__ - ${params.data.attackers.length} pilots involved`,
                 value: affiliation,
                 inline: false,
             },
@@ -928,7 +964,7 @@ export class ZKillSubscriber {
                 inline: true
             },
             {
-                name: '__Attacker__',
+                name: '__Attacker (Final Blow)__',
                 value: attackerDetails,
                 inline: true
             },
@@ -940,21 +976,66 @@ export class ZKillSubscriber {
         ].forEach((field) => fields.push(field));
 
         let title: string;
+        let authorText: string;
 
+        // if (params.minNumInvolved != null) {
+        //     authorText = `Fleet activity (${params.data.attackers.length}) in ${systemRegion.systemName} (${systemRegion.regionName})`;
+        //     if (mostCommonShip != null) {
+        //         const mostCommonShipName = await this.getNameForEntityId(mostCommonShip.shipTypeId);
+        //         title = `${this.getArticle(victimShipName)} \`${victimShipName}\` died to ${mostCommonShip.count}x \`${mostCommonShipName}\`\n_${distanceInUnits} from ${closestCelestialName}_`;
+        //     } else {
+        //         title = `${this.getArticle(victimShipName)} \`${victimShipName}\` died _${distanceInUnits} from ${closestCelestialName}_`;
+        //     }
+        // } else if (params.matchedShip?.shipName != null) {
+        //     if (params.messageColor === 'GREEN') {
+        //         authorText = `${params.matchedShip.shipName} active in ${systemRegion.systemName} (${systemRegion.regionName})`;
+        //         title = `${this.getArticle(params.matchedShip.shipName)} \`${params.matchedShip.shipName}\` killed ${this.getArticle(victimShipName, false)} \`${victimShipName}\`\n_${distanceInUnits} from ${closestCelestialName}_`;
+        //     } else {
+        //         authorText = `${params.matchedShip.shipName} died in ${systemRegion.systemName} (${systemRegion.regionName})`;
+        //         if (mostCommonShip != null) {
+        //             const mostCommonShipName = await this.getNameForEntityId(mostCommonShip.shipTypeId);
+        //             title = `${this.getArticle(params.matchedShip.shipName)} \`${params.matchedShip.shipName}\` died to ${mostCommonShip.count}x \`${mostCommonShipName}\`\n_${distanceInUnits} from ${closestCelestialName}_`;
+        //         } else {
+        //             title = `${this.getArticle(params.matchedShip.shipName)} \`${params.matchedShip.shipName}\` died _${distanceInUnits} from ${closestCelestialName}_`;
+        //         }
+        //     }
+        // } else {
+        //     title = params.embedding?.result.ogTitle;
+        //     authorText = '';
+        // }
         if (params.minNumInvolved != null) {
-            title = `${params.data.attackers.length} pilots destroyed a \`${victimShipName}\` in ${systemRegion.systemName} (${systemRegion.regionName})`;
-        } else if (params.matchedShipName != null) {
-            if (params.messageColor === 'GREEN') {
-                title = `\`${params.matchedShipName}\` active in ${systemRegion.systemName} (${systemRegion.regionName})`;
+            authorText = `Fleet activity (${params.data.attackers.length}) in ${systemRegion.systemName} (${systemRegion.regionName})`;
+            if (mostCommonShip != null) {
+                const mostCommonShipName = await this.getNameForEntityId(mostCommonShip.shipTypeId);
+                title = `${this.getArticle(victimShipName)} \`${victimShipName}\` died to ${mostCommonShip.count}x \`${mostCommonShipName}\` ${relativeTime}, _${distanceInUnits} from ${closestCelestialName}_`;
             } else {
-                title = `\`${params.matchedShipName}\` died in ${systemRegion.systemName} (${systemRegion.regionName})`;
+                title = `${this.getArticle(victimShipName)} \`${victimShipName}\` died ${relativeTime}, _${distanceInUnits} from ${closestCelestialName}_`;
+            }
+        } else if (params.matchedShip?.shipName != null) {
+            if (params.messageColor === 'GREEN') {
+                authorText = `${params.matchedShip.shipName} active in ${systemRegion.systemName} (${systemRegion.regionName})`;
+                title = `${this.getArticle(params.matchedShip.shipName)} \`${params.matchedShip.shipName}\` killed ${this.getArticle(victimShipName, false)} \`${victimShipName}\` ${relativeTime}, _${distanceInUnits} from ${closestCelestialName}_`;
+            } else {
+                authorText = `${params.matchedShip.shipName} died in ${systemRegion.systemName} (${systemRegion.regionName})`;
+                if (mostCommonShip != null) {
+                    const mostCommonShipName = await this.getNameForEntityId(mostCommonShip.shipTypeId);
+                    title = `${this.getArticle(params.matchedShip.shipName)} \`${params.matchedShip.shipName}\` died to ${mostCommonShip.count}x \`${mostCommonShipName}\` ${relativeTime}, _${distanceInUnits} from ${closestCelestialName}_`;
+                } else {
+                    title = `${this.getArticle(params.matchedShip.shipName)} \`${params.matchedShip.shipName}\` died ${relativeTime}, _${distanceInUnits} from ${closestCelestialName}_`;
+                }
             }
         } else {
             title = params.embedding?.result.ogTitle;
+            authorText = '';
         }
 
         return [{
             title: title,
+            author: {
+                iconURL: affiliationIconURLToRender,
+                name: authorText,
+                url: params.data.zkb.url,
+            },
             thumbnail: {
                 url: this.strItemRenderById(idOfIconToRender),
                 height: params.embedding?.result.ogImage?.height,
@@ -963,8 +1044,9 @@ export class ZKillSubscriber {
             url: params.data.zkb.url,
             color: params.messageColor,
             fields: fields,
+            timestamp: killmailTime.getTime(),
             footer: {
-                text: `${killmailTimeFormatted} - ${relativeTime} - ${killmail_value} total value destroyed`
+                text: `Value: ${killmail_value} • Time: ${relativeTime}`,
             }
         }];
     }
@@ -977,6 +1059,40 @@ export class ZKillSubscriber {
         if (n >= 1e12) return +(n / 1e12).toFixed(1) + 'tril';
     }
 
+    findMostCommonShipTypeIdAndCount(attackers: Attacker[]): {shipTypeId: number, count: number} | null {
+        const frequency: { [key: number]: number } = {};
+
+        for (const attacker of attackers) {
+            if (attacker.ship_type_id !== undefined) {
+                if (frequency[attacker.ship_type_id]) {
+                    frequency[attacker.ship_type_id]++;
+                } else {
+                    frequency[attacker.ship_type_id] = 1;
+                }
+            }
+        }
+
+        let maxCount = 0;
+        let mostCommonShipTypeId = null;
+
+        for (const shipTypeId in frequency) {
+            if (frequency[shipTypeId] > maxCount) {
+                maxCount = frequency[shipTypeId];
+                mostCommonShipTypeId = Number(shipTypeId);
+            }
+        }
+
+        return mostCommonShipTypeId ? {shipTypeId: mostCommonShipTypeId, count: maxCount} : null;
+    }
+
+    public getArticle(word: string, capitalize = true): string {
+        const vowels = ['a', 'e', 'i', 'o', 'u'];
+        let res = vowels.includes(word[0].toLowerCase()) ? 'An' : 'A';
+        if (!capitalize) {
+            res = res.toLowerCase();
+        }
+        return res;
+    }
     private async handlePermissionError(channel: TextChannel) {
         const owner = await channel.guild.fetchOwner();
         await owner.send(`The bot unsubscribed from channel ${channel.name} on ${channel.guild.name} because it was not able to write in it! Fix the permissions and subscribe again!`);
@@ -988,9 +1104,9 @@ export class ZKillSubscriber {
         }
     }
 
-    public static getInstance(client?: Client) {
+    public static getInstance(client?: Client, connect = true) {
         if (!this.instance && client)
-            this.instance = new ZKillSubscriber(client);
+            this.instance = new ZKillSubscriber(client, connect);
         else if (!this.instance) {
             throw new Error('Instance needs to be created with a client once.');
         }
@@ -1358,5 +1474,23 @@ export class ZKillSubscriber {
             return '';
         }
     }
+
+    strAllianceIconById(allianceId: number): string {
+        try {
+            return `https://images.evetech.net/alliances/${allianceId.toString()}/logo?size=64`;
+        } catch {
+            return '';
+        }
+    }
+
+    strCorporationIconById(corporationId: number): string {
+        try {
+            return `https://images.evetech.net/corporations/${corporationId.toString()}/logo?size=64`;
+        } catch {
+            return '';
+        }
+    }
 }
+
+
 
