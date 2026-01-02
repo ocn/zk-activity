@@ -2,3 +2,4 @@ config
 processor
 root
 models
+discord_bot
